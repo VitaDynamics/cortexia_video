@@ -1,0 +1,20 @@
+[project]
+name = "cortexia-video"
+version = "0.1.0"
+description = "Video annotation framework"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "PyYAML>=6.0",
+    "toml>=0.10.2",
+    "pydantic>=2.0",
+    "opencv-python>=4.5.0",
+    "numpy>=1.21.0",
+    "transformers",
+    "torch",
+    "Pillow",
+    "accelerate",
+    "pretty-errors>=1.2.25",
+    "modelscope>=1.25.0",
+    "pyvips>=3.0.0",
+]

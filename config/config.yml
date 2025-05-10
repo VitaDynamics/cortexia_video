@@ -1,0 +1,19 @@
+logging:
+  level: "INFO"
+  file: "app.log"
+
+model_settings:
+  object_listing_model: "vikhyatk/moondream2" # default usage: moondream2
+  object_detection_model: "IDEA-Research/GroundingDINO-tiny" # or YOLO-World
+  segmentation_model: "facebook/sam-vit-base"
+  description_model: "microsoft/phi-2" # Example, DAM model details might differ
+
+processing:
+  default_mode: "list" # list, detect, segment, describe, or combinations
+  input_video_path: "sample_data/input.mp4" # Example path
+  output_directory: "output/"
+  frame_interval: 10 # Process every 10th frame
+
+visualization:
+  enabled: true
+  annotated_image_format: "jpg"
