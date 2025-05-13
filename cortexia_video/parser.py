@@ -30,24 +30,7 @@ def parse_string_like_list(data_string: str) -> List[str]:
     print("Please ensure the string is correctly formatted like a Python list of strings.")
     return []
 
-# Example Usage:
-# Let's assume your data string looks exactly like the output from before
-data_string_example = "['office', 'desk', 'chair', 'computer', 'monitor', 'keyboard', 'mouse', 'power strip', 'cable', 'water bottle', 'jacket', 'person']"
 
-words_list = parse_string_like_list(data_string_example)
-
-# Now you have a standard Python list and can process it
-if words_list:
-  print("\nExtracted words:")
-  for word in words_list:
-    print(word)
-
-# Example with a slightly different format (if the outer brackets/quotes vary)
-# You might need to adjust the parsing logic if the string format is different.
-# For instance, if it's just "office', 'desk', 'chair'" without the outer [] and quotes.
-# If the format is simpler like comma-separated words, string splitting might be easier.
-
-# Example of a comma-separated string without outer list notation
 def parse_comma_separated_string(data_string: str) -> List[str]:
     """
     Parses a string of comma-separated words (potentially quoted)

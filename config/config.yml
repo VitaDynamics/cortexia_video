@@ -6,7 +6,11 @@ model_settings:
   object_listing_model: "vikhyatk/moondream2" # default usage: moondream2
   object_detection_model: "IDEA-Research/GroundingDINO-tiny" # or YOLO-World
   segmentation_model: "facebook/sam-vit-base"
-  description_model: "microsoft/phi-2" # Example, DAM model details might differ
+  description_model: "nvidia/DAM-3B-Self-Contained" # Using NVIDIA DAM for descriptions
+  description_temperature: 0.2
+  description_top_p: 0.5
+  description_num_beams: 1
+  description_max_tokens: 512
 
 processing:
   default_mode: "list" # list, detect, segment, describe, or combinations
@@ -17,3 +21,6 @@ processing:
 visualization:
   enabled: true
   annotated_image_format: "jpg"
+  contour_enabled: true  # Enable contour visualization for segmentation
+  contour_thickness: 3   # Thickness of contour lines
+  description_viz_enabled: true  # Enable visualization with descriptions

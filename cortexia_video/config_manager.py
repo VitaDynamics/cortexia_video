@@ -54,14 +54,13 @@ class ConfigManager:
         keys = key.split('.')
         value = self.config_data
         
-        try:
-            for k in keys:
-                value = value[k]
-            return value
-        except (KeyError, TypeError):
-            if default is not None:
-                return default
-            raise KeyError(f"Config parameter '{key}' not found")
+        for k in keys:
+            if k not in value:
+                if default is not None:
+                    return default
+                raise KeyError(f"Config parameter '{key}' not found")
+            value = value[k]
+        return value
             
     def validate_config(self, required_keys: list[str]) -> bool:
         """

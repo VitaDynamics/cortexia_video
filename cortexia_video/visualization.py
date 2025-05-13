@@ -1,8 +1,10 @@
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Union
 from PIL import Image, ImageDraw
 import numpy as np
+import cv2
+import matplotlib.pyplot as plt
 from cortexia_video.schemes import BoundingBox, DetectionResult, SegmentationResult, FrameData
-
+import random
 
 def random_named_css_colors(num_colors: int) -> List[str]:
     """
@@ -37,6 +39,7 @@ def random_named_css_colors(num_colors: int) -> List[str]:
 
     # Sample random named CSS colors
     return random.sample(named_css_colors, min(num_colors, len(named_css_colors)))
+
 def draw_bounding_box(
     draw, 
     box: BoundingBox,
@@ -114,3 +117,155 @@ def generate_annotated_frame(
             annotated_img = draw_segmentation_mask(annotated_img, segment.mask)
             draw = ImageDraw.Draw(annotated_img, "RGBA")  # re-init after new image
     return annotated_img
+
+def annotate(image: Union[Image.Image, np.ndarray], detection_results: List[DetectionResult]) -> np.ndarray:
+    """
+    Annotate an image with detection results (bounding boxes, labels, and masks).
+    
+    Args:
+        image: PIL Image or numpy array
+        detection_results: List of DetectionResult objects
+        
+    Returns:
+        Annotated image as numpy array (RGB format)
+    """
+    # Convert PIL Image to OpenCV format
+    image_cv2 = np.array(image) if isinstance(image, Image.Image) else image.copy()
+    image_cv2 = cv2.cvtColor(image_cv2, cv2.COLOR_RGB2BGR)
+
+    # Iterate over detections and add bounding boxes and masks
+    for detection in detection_results:
+        label = detection.label
+        score = detection.score
+        box = detection.box
+        mask = detection.mask
+
+        # Sample a random color for each detection
+        color = np.random.randint(0, 256, size=3).tolist()
+
+        # Draw bounding box
+        cv2.rectangle(
+            image_cv2, 
+            (box.x_min, box.y_min), 
+            (box.x_max, box.y_max), 
+            color, 
+            2
+        )
+        
+        # Draw label with score
+        cv2.putText(
+            image_cv2, 
+            f'{label}: {score:.2f}', 
+            (box.x_min, box.y_min - 10), 
+            cv2.FONT_HERSHEY_SIMPLEX, 
+            0.5, 
+            color, 
+            2
+        )
+
+        # If mask is available, apply it
+        if mask is not None:
+            # Convert mask to uint8
+            mask_uint8 = (mask * 255).astype(np.uint8)
+            contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(image_cv2, contours, -1, color, 2)
+
+    return cv2.cvtColor(image_cv2, cv2.COLOR_BGR2RGB)
+
+def plot_detections(
+    image: Union[Image.Image, np.ndarray],
+    detections: List[DetectionResult],
+    save_path: Optional[str] = None,
+    show: bool = True,
+    figsize: tuple = (12, 10)
+) -> None:
+    """
+    Plot detection results with matplotlib.
+    
+    Args:
+        image: PIL Image or numpy array
+        detections: List of DetectionResult objects
+        save_path: Optional path to save the output image
+        show: Whether to display the plot
+        figsize: Figure size
+    """
+    # Convert image to numpy array if needed
+    if isinstance(image, Image.Image):
+        image_np = np.array(image)
+    else:
+        image_np = image.copy()
+        
+    # Create annotated image
+    annotated_image = annotate(image_np, detections)
+    
+    # Display the image
+    plt.figure(figsize=figsize)
+    plt.imshow(annotated_image)
+    plt.axis('off')
+    
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight', dpi=200)
+    
+    if show:
+        plt.show()
+    else:
+        plt.close()
+
+def visualize_mask(
+    image: Union[Image.Image, np.ndarray],
+    mask: np.ndarray,
+    alpha: float = 0.5,
+    color: tuple = (0, 255, 0),
+    save_path: Optional[str] = None,
+    show: bool = True,
+    figsize: tuple = (12, 10)
+) -> None:
+    """
+    Visualize a binary mask overlaid on an image.
+    
+    Args:
+        image: PIL Image or numpy array
+        mask: Binary mask as numpy array
+        alpha: Transparency of the mask overlay (0-1)
+        color: RGB color for the mask
+        save_path: Optional path to save the output image
+        show: Whether to display the plot
+        figsize: Figure size
+    """
+    # Convert image to numpy array if needed
+    if isinstance(image, Image.Image):
+        image_np = np.array(image)
+    else:
+        image_np = image.copy()
+    
+    # Create a colored mask
+    colored_mask = np.zeros_like(image_np)
+    mask_bool = mask > 0
+    colored_mask[mask_bool] = color
+    
+    # Blend the original image with the colored mask
+    blended = cv2.addWeighted(
+        image_np, 
+        1, 
+        colored_mask, 
+        alpha, 
+        0
+    )
+    
+    # Add contour around the mask
+    mask_uint8 = (mask * 255).astype(np.uint8)
+    contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cv2.drawContours(blended, contours, -1, color, 2)
+    
+    # Display the image
+    plt.figure(figsize=figsize)
+    plt.imshow(blended)
+    plt.axis('off')
+    
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight', dpi=200)
+    
+    if show:
+        plt.show()
+    else:
+        plt.close()
