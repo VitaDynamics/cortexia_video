@@ -4,6 +4,10 @@ version = "0.1.0"
 description = "Video annotation framework"
 readme = "README.md"
 requires-python = ">=3.10"
+authors = [
+    { name = "Your Name", email = "you@example.com" },
+]
+packages = ["cortexia_video"]
 dependencies = [
     "PyYAML>=6.0",
     "toml>=0.10.2",
@@ -22,3 +26,10 @@ dependencies = [
     "sentencepiece>=0.2.0",
     "protobuf>=6.30.2",
 ]
+
+[project.scripts]
+cortexia-video = "cortexia_video.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -8,24 +8,45 @@ from cortexia_video.object_listing import OBJECT_LISTER_REGISTRY
 class ConfigManager:
     """Handles loading and accessing configuration from TOML, YAML or JSON files."""
     
-    def __init__(self, config_dir: str = "config", config_name: str = "config"):
+    def __init__(self, config_file_path: Optional[str] = None, config_dir: str = "config", config_name: str = "config"):
         """
-        Initialize ConfigManager with directory and base config name.
-        
+        Initialize ConfigManager.
+
         Args:
-            config_dir: Directory containing config files
-            config_name: Base name of config file (without extension)
+            config_file_path: Direct path to a config file.
+            config_dir: Directory containing config files (used if config_file_path is None).
+            config_name: Base name of config file (without extension, used if config_file_path is None).
         """
+        self.config_file_path = config_file_path
         self.config_dir = config_dir
         self.config_name = config_name
         self.config_data: Dict[str, Any] = {}
-        
+
     def load_config(self) -> None:
-        """Load configuration from TOML, YAML or JSON file (preferring in that order)."""
+        """Load configuration from the specified file path or search in the config directory."""
+        if self.config_file_path and os.path.exists(self.config_file_path):
+            file_path = self.config_file_path
+            _, ext = os.path.splitext(file_path)
+            if ext == ".toml":
+                with open(file_path, 'r') as f:
+                    self.config_data = toml.load(f)
+            elif ext in [".yml", ".yaml"]:
+                with open(file_path, 'r') as f:
+                    self.config_data = yaml.safe_load(f)
+            elif ext == ".json":
+                with open(file_path, 'r') as f:
+                    self.config_data = json.load(f)
+            else:
+                raise ValueError(f"Unsupported config file extension: {ext} for file {file_path}")
+            if not self.config_data:
+                 raise FileNotFoundError(f"Config file found at {file_path} but is empty or invalid.")
+            return
+
+        # Fallback to searching in config_dir if config_file_path is not provided or not found
         toml_path = os.path.join(self.config_dir, f"{self.config_name}.toml")
         yaml_path = os.path.join(self.config_dir, f"{self.config_name}.yml")
         json_path = os.path.join(self.config_dir, f"{self.config_name}.json")
-        
+
         if os.path.exists(toml_path):
             with open(toml_path, 'r') as f:
                 self.config_data = toml.load(f)
@@ -36,8 +57,11 @@ class ConfigManager:
             with open(json_path, 'r') as f:
                 self.config_data = json.load(f)
         else:
+            paths_searched = [toml_path, yaml_path, json_path]
+            if self.config_file_path: # If a specific path was given but not found
+                paths_searched.insert(0, self.config_file_path)
             raise FileNotFoundError(
-                f"No config file found at {toml_path}, {yaml_path}, or {json_path}"
+                f"No config file found. Searched at: {', '.join(paths_searched)}"
             )
             
     def get_param(self, key: str, default: Optional[Any] = None) -> Any:
