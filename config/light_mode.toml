@@ -1,0 +1,28 @@
+[logging]
+level = "INFO"
+file = "app.log"
+
+[model_settings]
+object_listing_model = "recognize_anything/ram" # Best Usage instead using a VLM model
+object_detection_model = "IDEA-Research/grounding-dino-tiny" # or use YoLo-World
+segmentation_model = "facebook/sam-vit-base" 
+description_model = "nvidia/DAM-3B-Self-Contained"
+clip_feature_model = "PE-Core-B16-224" # Current SOTA CLIP like Vision Encoder.
+clip_feature_model_identifier = "clip_pe"
+description_temperature = 0.2
+description_top_p = 0.5
+description_num_beams = 1
+description_max_tokens = 512
+
+[processing]
+default_mode = "list"
+input_video_path = "sample_data/output_rgb.mp4"
+output_directory = "output/"
+frame_interval = 50
+
+[visualization]
+enabled = false
+annotated_image_format = "jpg"
+contour_enabled = false  # Enable contour visualization for segmentation
+contour_thickness = 3   # Thickness of contour lines
+description_viz_enabled = false  # Enable visualization with descriptions 
