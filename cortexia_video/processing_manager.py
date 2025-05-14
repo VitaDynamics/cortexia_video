@@ -4,6 +4,7 @@ from typing import List, Optional
 
 import cv2
 import numpy as np
+from decord import VideoReader, cpu
 from PIL import Image
 
 from cortexia_video import data_io
@@ -20,6 +21,7 @@ from cortexia_video.schemes import (
 )
 from cortexia_video.visualization import generate_annotated_frame
 
+# TODO: Add a better config manger with mode pipeline. 
 
 class ProcessingManager:
     def __init__(
@@ -37,6 +39,7 @@ class ProcessingManager:
         self.detector = None
         self.segmenter = None
         self.describer = None
+        self.feature_extractor = None
 
     def load_components(self, processing_mode: str) -> None:
         """
@@ -50,6 +53,7 @@ class ProcessingManager:
         self.detector = None
         self.segmenter = None
         self.describer = None
+        self.feature_extractor = None
 
         # Load only the components needed for the processing modes
         if "list" in processing_mode:
@@ -68,6 +72,10 @@ class ProcessingManager:
             self.logger.info("Loading object describer component")
             self.describer = ObjectDescriber(self.config_manager)
 
+        if "extract_features" in processing_mode:
+            self.logger.info("Loading feature extractor component")
+            self.feature_extractor = self.config_manager.get_feature_extractor()
+
     def process_video(self, video_path: str, processing_mode: str) -> str:
         # Dynamically load components based on processing mode
         self.load_components(processing_mode)
@@ -77,13 +85,13 @@ class ProcessingManager:
             "processing.output_directory", "output"
         )
 
-        # Get video properties
-        cap = cv2.VideoCapture(video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        cap.release()
+        # Get video properties using Decord
+        vr = VideoReader(video_path, ctx=cpu(0))
+        fps = vr.get_avg_fps()
+        total_frames = len(vr)
+        # Get dimensions from the first frame
+        first_frame = vr[0].asnumpy()
+        height, width = first_frame.shape[:2]
 
         video_content_instance = VideoContent(
             video_path=video_path,
@@ -98,8 +106,15 @@ class ProcessingManager:
         for frame_number, timestamp, frame_np_array in data_io.load_video_frames(
             video_path, frame_interval
         ):
-            # Convert BGR to RGB
-            rgb_array = cv2.cvtColor(frame_np_array, cv2.COLOR_BGR2RGB)
+            # Convert BGR to RGB if coming from cv2 (not needed with Decord, but keeping for compatibility)
+            if (
+                frame_np_array.shape[2] == 3
+                and np.sum(np.abs(frame_np_array[:, :, 0] - frame_np_array[:, :, 2]))
+                > 0
+            ):
+                rgb_array = cv2.cvtColor(frame_np_array, cv2.COLOR_BGR2RGB)
+            else:
+                rgb_array = frame_np_array  # already in RGB format from Decord
 
             frame_data = FrameData(
                 frame_number=frame_number,
@@ -108,6 +123,23 @@ class ProcessingManager:
             )
 
             pil_image = Image.fromarray(rgb_array)
+
+            # Extract scene-level features if enabled
+            if "extract_features" in processing_mode and self.feature_extractor:
+                try:
+                    scene_features_tensor = (
+                        self.feature_extractor.extract_image_features(pil_image)
+                    )
+                    # Convert tensor to list for JSON serialization
+                    frame_data.scene_clip_features = (
+                        scene_features_tensor.squeeze().cpu().tolist()
+                    )
+                except Exception as e:
+                    self.logger.error(
+                        f"Error extracting scene features for frame {frame_number}: {e}",
+                        exc_info=True,
+                    )
+
             detections: List[DetectionResult] = []
             segments: List[SegmentationResult] = []
             object_names = []
@@ -176,6 +208,36 @@ class ProcessingManager:
                         segments.append(segment)
                         # Also add the mask to the detection
                         detection.mask = mask_np
+
+                        # Extract object-level features if enabled
+                        if (
+                            "extract_features" in processing_mode
+                            and self.feature_extractor
+                        ):
+                            try:
+                                if detection.box:
+                                    cropped_object_image = pil_image.crop(
+                                        (
+                                            int(detection.box.xmin),
+                                            int(detection.box.ymin),
+                                            int(detection.box.xmax),
+                                            int(detection.box.ymax),
+                                        )
+                                    )
+                                    object_features_tensor = (
+                                        self.feature_extractor.extract_image_features(
+                                            cropped_object_image
+                                        )
+                                    )
+                                    # Store in the corresponding detection object
+                                    detection.object_clip_features = (
+                                        object_features_tensor.squeeze().cpu().tolist()
+                                    )
+                            except Exception as e:
+                                self.logger.error(
+                                    f"Error extracting object features for detection {detection.id} in frame {frame_number}: {e}",
+                                    exc_info=True,
+                                )
 
                         # Optionally generate a visualization with contours if enabled
                         contour_viz_enabled = self.config_manager.get_param(

@@ -4,34 +4,39 @@ import pickle
 from pathlib import Path
 from typing import Any, Generator, Tuple
 
-import cv2
+from decord import VideoReader, cpu
 
 from .schemes import VideoContent
 
 
 def load_video_frames(
-    video_path: str, frame_interval: int
+    video_path: str, frame_interval: int, batch_size: int = 1
 ) -> Generator[Tuple[int, float, Any], None, None]:
     try:
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            raise ValueError(f"Could not open video file: {video_path}")
+        # Create VideoReader object from decord
+        vr = VideoReader(video_path, ctx=cpu(0))
 
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        frame_count = 0
+        # Get FPS information from VideoReader
+        fps = vr.get_avg_fps()
 
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
+        # Total number of frames
+        total_frames = len(vr)
 
-            if frame_count % frame_interval == 0:
+        # Generate frame indices based on interval
+        frame_indices = range(0, total_frames, frame_interval)
+        if batch_size == 1:
+            for frame_count in frame_indices:
+                # Read the frame at the specified index
+                frame = vr[frame_count].asnumpy()
+
+            # Calculate timestamp
                 timestamp = frame_count / fps
+
+                # Yield frame with metadata
                 yield frame_count, timestamp, frame
+        elif batch_size > 1:
+            for i in range(0, total_frames, batch_size):
 
-            frame_count += 1
-
-        cap.release()
     except Exception as e:
         raise RuntimeError(f"Error processing video: {video_path}") from e
 

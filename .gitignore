@@ -23,6 +23,11 @@ node_modules/
 *.njsproj
 *.sln
 *.sw?
+*.pth
+*.pt
+
+# data 
+sample_data/
 
 # OS specific
 .DS_Store

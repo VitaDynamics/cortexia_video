@@ -6,6 +6,9 @@ from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor, Sam
 from cortexia_video.config_manager import ConfigManager
 from cortexia_video.schemes import DetectionResult, BoundingBox
 
+
+# Add SAHI inference during detection.
+
 class ObjectDetector:
     def __init__(self, config_manager: ConfigManager):
         """Initialize the object detector with model from config.
@@ -20,11 +23,10 @@ class ObjectDetector:
         model_name = self.config.get_param("model_settings.object_detection_model", 
                                   "IDEA-Research/grounding-dino-base")
         
-        try:
-            self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_name).to(self.device)
-            self.processor = AutoProcessor.from_pretrained(model_name)
-        except Exception as e:
-            raise RuntimeError(f"Failed to load object detection model: {str(e)}")
+
+        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_name).to(self.device)
+        self.processor = AutoProcessor.from_pretrained(model_name)
+
         
         # SAM model is not directly integrated in this class to avoid compatibility issues
         # Use the standalone ObjectSegmenter class for mask generation
