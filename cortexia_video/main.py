@@ -25,10 +25,12 @@ def parse_arguments():
         default="./config.toml",
     )
 
+
     parser.add_argument(
-        "--videos_dir",
-        type=str,
-        help="Path to directory containing videos that will be processed.",
+        "--batch_mode",
+        type=bool,
+        help="Batch mode for processing videos",
+        default=False,
     )
 
     return parser.parse_args()
@@ -91,7 +93,7 @@ def main():
         manager = ProcessingManager(config_manager=config_manager)
         for video_file in iterate_video(args.videos_dir):
             # TODO: Currently do not support real batch processing.
-            output_file = manager.process_video(video_file, processing_mode)
+            output_file = manager.process_video(video_path=video_file, processing_mode=processing_mode)
 
         if output_file:
             logger.info(f"Processing complete. Annotations saved to: {output_file}")

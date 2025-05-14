@@ -10,7 +10,7 @@ from .schemes import VideoContent
 
 
 def load_video_frames(
-    video_path: str, frame_interval: int
+    video_path: str, frame_interval: int, batch_size: int = 1
 ) -> Generator[Tuple[int, float, Any], None, None]:
     try:
         # Create VideoReader object from decord
@@ -24,16 +24,18 @@ def load_video_frames(
 
         # Generate frame indices based on interval
         frame_indices = range(0, total_frames, frame_interval)
-
-        for frame_count in frame_indices:
-            # Read the frame at the specified index
-            frame = vr[frame_count].asnumpy()
+        if batch_size == 1:
+            for frame_count in frame_indices:
+                # Read the frame at the specified index
+                frame = vr[frame_count].asnumpy()
 
             # Calculate timestamp
-            timestamp = frame_count / fps
+                timestamp = frame_count / fps
 
-            # Yield frame with metadata
-            yield frame_count, timestamp, frame
+                # Yield frame with metadata
+                yield frame_count, timestamp, frame
+        elif batch_size > 1:
+            for i in range(0, total_frames, batch_size):
 
     except Exception as e:
         raise RuntimeError(f"Error processing video: {video_path}") from e

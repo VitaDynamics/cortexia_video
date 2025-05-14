@@ -273,7 +273,7 @@ class RAMLister(ObjectLister):
             traceback.print_exc()
             raise RuntimeError(f"Failed to initialize RAM model: {e}")
 
-    def list_objects_in_image(self, image_data: Any) -> List[str]:
+    def list_objects_in_image(self, image_data: List[Any]) -> List[str]:
         """
         Extract a list of objects from an image using RAM.
 
@@ -284,12 +284,12 @@ class RAMLister(ObjectLister):
             List of detected objects as strings
         """
         try:
-            # Make sure model is initialized
+            # Lazily initialize model.
             self._initialize_model()
 
             # Convert numpy array to PIL Image if needed
-            if isinstance(image_data, np.ndarray):
-                image_data = Image.fromarray(image_data)
+            if isinstance(image_data, list) and isinstance(image_data[0], np.ndarray):
+                image_data = [Image.fromarray(image) for image in image_data]
 
             # Ensure image is in RGB format
             image_data = image_data.convert("RGB")
