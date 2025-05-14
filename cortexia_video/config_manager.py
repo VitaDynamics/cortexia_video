@@ -2,8 +2,10 @@ import os
 import json
 import yaml
 import toml
+import logging
 from typing import Any, Dict, Optional
 from cortexia_video.object_listing import OBJECT_LISTER_REGISTRY
+import logging
 
 class ConfigManager:
     """Handles loading and accessing configuration from TOML, YAML or JSON files."""
@@ -21,6 +23,7 @@ class ConfigManager:
         self.config_dir = config_dir
         self.config_name = config_name
         self.config_data: Dict[str, Any] = {}
+        self.logger = logging.getLogger(__name__)
 
     def load_config(self) -> None:
         """Load configuration from the specified file path or search in the config directory."""
@@ -118,3 +121,38 @@ class ConfigManager:
             if model_name.startswith(pattern):
                 return lister_cls(self)
         raise ValueError(f"Unknown object listing model: {model_name}")
+        
+    def get_feature_extractor(self) -> Optional[Any]:
+        """
+        Retrieves an instance of the configured feature extractor.
+        
+        Note: This method requires clip_wrapper.py to be fully implemented.
+        
+        Returns:
+            Optional[Any]: An instance of the feature extractor, or None if configuration is missing or invalid.
+        """
+        # Defer imports to avoid circular dependencies and allow for partial implementation
+        try:
+            # Only import when the method is called to avoid import errors at module load time
+            from cortexia_video.clip_wrapper import FeatureExtractor, FEATURE_EXTRACTOR_REGISTRY
+            
+            try:
+                model_identifier = self.get_param('model_settings.clip_feature_model_identifier')
+                if not model_identifier:
+                    self.logger.error("Feature extractor model identifier ('clip_feature_model_identifier') not found in config.")
+                    return None
+
+                extractor_class = FEATURE_EXTRACTOR_REGISTRY.get(model_identifier)
+                if extractor_class:
+                    self.logger.info(f"Loading feature extractor: {model_identifier}")
+                    return extractor_class(self) # Pass self (ConfigManager instance)
+                else:
+                    self.logger.error(f"No feature extractor found in registry for identifier: {model_identifier}")
+                    return None
+            except Exception as e:
+                self.logger.error(f"Error initializing feature extractor: {e}", exc_info=True)
+                return None
+                
+        except ImportError as ie:
+            self.logger.warning(f"Feature extractor module not available: {ie}")
+            return None

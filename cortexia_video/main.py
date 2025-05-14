@@ -9,6 +9,7 @@ import pretty_errors
 
 logger = logging.getLogger(__name__)
 
+#TODO: expeted to use decord
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(

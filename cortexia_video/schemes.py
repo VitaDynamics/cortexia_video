@@ -23,6 +23,7 @@ class DetectionResult(BaseModel):
     mask: Optional[np.ndarray] = None
     description: Optional[str] = None
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    object_clip_features: Optional[List[float]] = None
 
     class Config:
         arbitrary_types_allowed = True
@@ -76,6 +77,7 @@ class FrameData(BaseModel):
     detections: List[DetectionResult] = Field(default_factory=list)
     segments: List[SegmentationResult] = Field(default_factory=list)
     features: Dict[str, Any] = Field(default_factory=dict)
+    scene_clip_features: Optional[List[float]] = None
 
     class Config:
         arbitrary_types_allowed = True
