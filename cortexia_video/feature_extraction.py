@@ -62,15 +62,15 @@ class FeatureExtractor(ABC):
         self.config_manager = config_manager
 
     @abstractmethod
-    def extract_image_features(self, image_data: Image.Image) -> torch.Tensor:
+    def extract_image_features(self, images_data: List[Image.Image]) -> torch.Tensor:
         """
-        Extract features from an image.
+        Extract features from one or more images.
         
         Args:
-            image_data: Input image (PIL Image)
+            images_data: List of input images (PIL Images)
             
         Returns:
-            torch.Tensor: Extracted features
+            torch.Tensor: Extracted features for all images
         """
         pass
 
@@ -122,20 +122,45 @@ class CLIPFeatureExtractor(FeatureExtractor):
         self.image_preprocess = pe_transforms.get_image_transform(self.model.image_size)
         self.tokenizer = pe_transforms.get_text_tokenizer(self.model.context_length)
 
-    def extract_image_features(self, image_data: Image.Image) -> torch.Tensor:
+    def extract_image_features(self, images_data: List[Image.Image]) -> torch.Tensor:
         """
-        Extract features from an image using CLIP.
+        Extract features from one or more images using CLIP.
         
         Args:
-            image_data: Input image (PIL Image)
+            images_data: List of input images (PIL Images)
             
         Returns:
-            torch.Tensor: Extracted image features
+            torch.Tensor: Extracted image features for all images
         """
-        image_inputs = self.image_preprocess(image_data).unsqueeze(0).to(self.device)
+        # Handle empty input
+        if not images_data:
+            # Get feature dimension for CLIP visual model
+            feature_dim = self.model.visual.output_dim if hasattr(self.model, 'visual') and hasattr(self.model.visual, 'output_dim') else 512
+            return torch.empty((0, feature_dim), device=self.device)
+            
+        # Preprocess all images in the batch
+        processed_images_list = []
+        for img in images_data:
+            # The image_preprocess transforms PIL images to tensors
+            processed_tensor = self.image_preprocess(img)
+            # Ensure it's a tensor (this helps with type checking)
+            if isinstance(processed_tensor, torch.Tensor):
+                processed_images_list.append(processed_tensor)
+            else:
+                # In case it's not already a tensor, convert it (shouldn't happen with proper preprocess)
+                processed_images_list.append(torch.tensor(processed_tensor))
+        
+        # Stack the tensors into a batch
+        batch_image_tensors = torch.stack(processed_images_list).to(self.device)
+        
+        # Encode images
         with torch.no_grad():
-            image_features = self.model.encode_image(image_inputs)
-        return image_features
+            batch_features = self.model.encode_image(batch_image_tensors)
+            
+        # Normalize features
+        batch_features /= batch_features.norm(dim=-1, keepdim=True)
+        
+        return batch_features
 
     def extract_video_features(self, video_path: str, num_frames: int = 8) -> torch.Tensor:
         """

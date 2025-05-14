@@ -30,14 +30,17 @@ def test_ram_lister(image_path=None):
     print(f"Loading image: {image_path}")
     image = Image.open(image_path)
 
+    # give a batch of 3 images
+    images = [image] * 3
+
     # List objects in the image
     print("Detecting objects...")
-    objects = lister.list_objects_in_image(image)
+    objects = lister.list_objects_in_image_batched(images)
 
     # Print results
     print("\nDetected objects:")
-    for i, obj in enumerate(objects, 1):
-        print(f"{i}. {obj}")
+    for i, obj in enumerate(objects):
+        print(f"Image {i+1}: {obj}")
 
     return objects
 
@@ -45,7 +48,7 @@ def test_ram_lister(image_path=None):
 if __name__ == "__main__":
     # Set up argument parser
     parser = argparse.ArgumentParser(description="Test RAMLister object detection")
-    parser.add_argument("--image", type=str, help="Path to test image (optional)")
+    parser.add_argument("--image", default="recognize-anything/images/openset_example.jpg", type=str, help="Path to test image (optional)")
 
     # Parse arguments
     args = parser.parse_args()

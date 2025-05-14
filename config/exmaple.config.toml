@@ -9,16 +9,24 @@ segmentation_model = "facebook/sam-vit-base"
 description_model = "nvidia/DAM-3B-Self-Contained"
 clip_feature_model = "PE-Core-B16-224"
 clip_feature_model_identifier = "clip_pe"
-description_temperature = 0.2
-description_top_p = 0.5
-description_num_beams = 1
-description_max_tokens = 512
+
+[detection_settings]
+box_threshold = 0.3
+text_threshold = 0.3
+
+
+[description_settings]
+temperature = 0.2
+top_p = 0.5
+num_beams = 1
+max_tokens = 512
 
 [processing]
 default_mode = "list"
 input_video_path = "sample_data/"
 output_directory = "output/"
 frame_interval = 50
+batch_size = 4  # Number of frames to process in a single batch
 
 [visualization]
 enabled = false

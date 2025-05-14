@@ -10,10 +10,16 @@ segmentation_model = "facebook/sam-vit-huge"
 description_model = "nvidia/DAM-3B-Self-Contained"
 clip_feature_model = "PE-Core-G14-448" # Current SOTA CLIP like Vision Encoder.
 clip_feature_model_identifier = "clip_pe"
-description_temperature = 0.2
-description_top_p = 0.5
-description_num_beams = 1
-description_max_tokens = 512
+
+[detection_settings]
+confidence_threshold = 0.5 
+
+
+[description_settings]
+temperature = 0.2
+top_p = 0.5
+num_beams = 1
+max_tokens = 512
 
 [processing]
 default_mode = "list detect segment describe extract_features"

@@ -11,7 +11,21 @@ from .schemes import VideoContent
 
 def load_video_frames(
     video_path: str, frame_interval: int, batch_size: int = 1
-) -> Generator[Tuple[int, float, Any], None, None]:
+) -> Generator[Tuple[Any, Any, Any], None, None]:
+    """
+    Load frames from a video file with specified interval.
+    
+    Args:
+        video_path: Path to the video file
+        frame_interval: Interval between frames to process
+        batch_size: Number of frames to process in a batch
+        
+    Returns:
+        If batch_size=1: Generator yielding (frame_number, timestamp, frame)
+        If batch_size>1: Generator yielding (batch_frames_meta, batch_frames_np, None)
+          where batch_frames_meta is a list of {'frame_number': int, 'timestamp': float} dicts
+          and batch_frames_np is a list of numpy arrays
+    """
     try:
         # Create VideoReader object from decord
         vr = VideoReader(video_path, ctx=cpu(0))
@@ -24,18 +38,48 @@ def load_video_frames(
 
         # Generate frame indices based on interval
         frame_indices = range(0, total_frames, frame_interval)
+        
         if batch_size == 1:
+            # Original behavior - yield individual frames
             for frame_count in frame_indices:
                 # Read the frame at the specified index
                 frame = vr[frame_count].asnumpy()
 
-            # Calculate timestamp
+                # Calculate timestamp
                 timestamp = frame_count / fps
 
-                # Yield frame with metadata
+                # Yield frame with metadata (original format for compatibility)
                 yield frame_count, timestamp, frame
         elif batch_size > 1:
-            for i in range(0, total_frames, batch_size):
+            # Initialize batch containers
+            batch_frames_meta_list = []
+            batch_frames_np_list = []
+            
+            for frame_count in frame_indices:
+                # Read the frame at the specified index
+                frame_np = vr[frame_count].asnumpy()
+                
+                # Calculate timestamp
+                timestamp = frame_count / fps
+                
+                # Create metadata
+                meta = {'frame_number': frame_count, 'timestamp': timestamp}
+                
+                # Append to lists
+                batch_frames_meta_list.append(meta)
+                batch_frames_np_list.append(frame_np)
+                
+                # Check if the batch is full
+                if len(batch_frames_np_list) == batch_size:
+                    # Yield the batch with None as third element for compatibility
+                    yield batch_frames_meta_list, batch_frames_np_list, None
+                    # Reset the lists
+                    batch_frames_meta_list = []
+                    batch_frames_np_list = []
+            
+            # After the loop, if there are leftover frames, yield them
+            if batch_frames_np_list:
+                yield batch_frames_meta_list, batch_frames_np_list, None
 
     except Exception as e:
         raise RuntimeError(f"Error processing video: {video_path}") from e
