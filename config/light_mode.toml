@@ -15,10 +15,10 @@ description_num_beams = 1
 description_max_tokens = 512
 
 [processing]
-default_mode = "list"
+default_mode = "list detect segment describe extract_features"
 input_video_path = "sample_data/output_rgb.mp4"
 output_directory = "output/"
-frame_interval = 50
+frame_interval = 100
 
 [visualization]
 enabled = false

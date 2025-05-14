@@ -21,6 +21,7 @@ from cortexia_video.schemes import (
 )
 from cortexia_video.visualization import generate_annotated_frame
 
+# TODO: Add a better config manger with mode pipeline. 
 
 class ProcessingManager:
     def __init__(
