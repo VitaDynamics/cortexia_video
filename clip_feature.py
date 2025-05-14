@@ -6,6 +6,9 @@ import decord
 
 # add path from perception_models to sys.path
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "perception_models"))
+# Import modules from perception_models package
+import perception_models.core.vision_encoder.pe as pe
+import perception_models.core.vision_encoder.transforms as transforms
 
 def preprocess_video(video_path, num_frames=8, transform=None, return_first_frame_for_demo=True):
     # TODO: make this working with VideoContent class. It can work with out video preprocessing workflow.
@@ -39,9 +42,6 @@ def calculate_score(image_features, text_features):
     return text_probs # each for related feature
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # Import modules from perception_models package
-    import perception_models.core.vision_encoder.pe as pe
-    import perception_models.core.vision_encoder.transforms as transforms
 
     model_name = "PE-Core-B16-224"
 
