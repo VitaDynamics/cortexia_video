@@ -6,6 +6,9 @@ from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor, Sam
 from cortexia_video.config_manager import ConfigManager
 from cortexia_video.schemes import DetectionResult, BoundingBox
 
+
+# Add SAHI inference during detection.
+
 class ObjectDetector:
     def __init__(self, config_manager: ConfigManager):
         """Initialize the object detector with model from config.

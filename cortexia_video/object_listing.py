@@ -30,12 +30,12 @@ class ObjectLister(ABC):
         self.config_manager = config_manager
 
     @abstractmethod
-    def list_objects_in_image(self, image_data: Any) -> List[str]:
+    def list_objects_in_image(self, image_data: List[Any]) -> List[str]:
         """
         Extract a list of objects from an image.
 
         Args:
-            image_data: Input image (PIL Image or numpy array)
+            image_data: List of Input image (PIL Image or numpy array). It should be a list of Torch
 
         Returns:
             List of detected objects as strings
