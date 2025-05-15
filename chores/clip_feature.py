@@ -1,8 +1,9 @@
-import os, sys
-import torch
-import matplotlib.pyplot as plt
-from PIL import Image
+import os
+import sys
+
 import decord
+import torch
+from PIL import Image
 
 # add path from perception_models to sys.path
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "perception_models"))
@@ -10,7 +11,10 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "perception_models
 import perception_models.core.vision_encoder.pe as pe
 import perception_models.core.vision_encoder.transforms as transforms
 
-def preprocess_video(video_path, num_frames=8, transform=None, return_first_frame_for_demo=True):
+
+def preprocess_video(
+    video_path, num_frames=8, transform=None, return_first_frame_for_demo=True
+):
     # TODO: make this working with VideoContent class. It can work with out video preprocessing workflow.
     """
     Uniformly samples a specified number of frames from a video and preprocesses them.
@@ -35,11 +39,16 @@ def preprocess_video(video_path, num_frames=8, transform=None, return_first_fram
         first_frame = frames[0]
     return torch.stack(preprocessed_frames, dim=0), first_frame
 
+
 def calculate_score(image_features, text_features):
     image_features /= image_features.norm(dim=-1, keepdim=True)
     text_features /= text_features.norm(dim=-1, keepdim=True)
-    text_probs = (100.0 * image_features @ text_features.T).softmax(dim=-1).cpu().numpy()[0]
-    return text_probs # each for related feature
+    text_probs = (
+        (100.0 * image_features @ text_features.T).softmax(dim=-1).cpu().numpy()[0]
+    )
+    return text_probs  # each for related feature
+
+
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -53,10 +62,9 @@ def main():
     preprocess = transforms.get_image_transform(model.image_size)
     tokenizer = transforms.get_text_tokenizer(model.context_length)
 
-    # calculate the featurs 
+    # calculate the featurs
     sample_image = Image.open("perception_models/apps/pe/docs/assets/cat.png")
     sample_text = ["a photo of a cat", "a photo of a dog"]
-
 
     image_inputs = preprocess(sample_image).unsqueeze(0).to(device)
     text_inputs = tokenizer(sample_text).to(device)
@@ -64,7 +72,7 @@ def main():
     with torch.no_grad():
         image_features = model.encode_image(image_inputs)
         text_features = model.encode_text(text_inputs)
-    
+
     text_probs = calculate_score(image_features, text_features)
     print(sample_text)
     print(text_probs)
@@ -72,7 +80,9 @@ def main():
     # calcualte video features
 
     sample_video_path = "perception_models/apps/pe/docs/assets/dog.mp4"
-    video_frames, first_frame = preprocess_video(sample_video_path, transform=preprocess)
+    video_frames, first_frame = preprocess_video(
+        sample_video_path, transform=preprocess
+    )
     video_inputs = video_frames.unsqueeze(0).to(device)
 
     with torch.no_grad():

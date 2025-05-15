@@ -85,10 +85,10 @@ class ObjectDescriber:
         prompt = '<image>\nDescribe the masked region in detail.'
         
         # Load generation parameters from config or use defaults
-        temperature = self.config_manager.get_param('model_settings.description_temperature', 0.2)
-        top_p = self.config_manager.get_param('model_settings.description_top_p', 0.5)
-        num_beams = self.config_manager.get_param('model_settings.description_num_beams', 1)
-        max_new_tokens = self.config_manager.get_param('model_settings.description_max_tokens', 512)
+        temperature = self.config_manager.get_param('description_settings.temperature', 0.2)
+        top_p = self.config_manager.get_param('description_settings.top_p', 0.5)
+        num_beams = self.config_manager.get_param('description_settings.num_beams', 1)
+        max_new_tokens = self.config_manager.get_param('description_settings.max_tokens', 512)
         
         # Generate description
         try:

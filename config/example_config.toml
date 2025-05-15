@@ -24,7 +24,7 @@ max_tokens = 512
 
 
 [processing]
-default_mode = "list detect segment describe extract_features"
+default_mode = "list | detect | segment | describe | extract_scene | extract_object"
 input_video_path = "sample_data/"
 output_directory = "output/"
 frame_interval = 100

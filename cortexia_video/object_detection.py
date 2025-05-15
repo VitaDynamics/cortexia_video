@@ -2,7 +2,9 @@ from typing import List, Dict, Any, Optional, Union
 import torch
 import numpy as np
 from PIL import Image
-from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor, SamModel, SamProcessor
+from transformers.models.auto.modeling_auto import AutoModelForZeroShotObjectDetection
+from transformers.models.auto.processing_auto import AutoProcessor
+from transformers.models.sam import SamModel, SamProcessor
 from cortexia_video.config_manager import ConfigManager
 from cortexia_video.schemes import DetectionResult, BoundingBox
 
@@ -31,55 +33,81 @@ class ObjectDetector:
         # SAM model is not directly integrated in this class to avoid compatibility issues
         # Use the standalone ObjectSegmenter class for mask generation
 
-    def detect_objects(self, image_data: Union[Image.Image, np.ndarray], text_prompt: str, 
-                       box_threshold: float = 0.3, text_threshold: float = 0.3):
-        """Detect objects in image based on text prompt.
+    def detect_objects(self, images_data: List[Image.Image], text_prompts: List[List[str]]) -> List[List[dict]]:
+        """Detect objects in batched images based on text prompts.
         
         Args:
-            image_data: PIL Image or numpy array
-            text_prompt: Text describing objects to detect (e.g. "dog. cat. person.")
+            images_data: List of PIL Images
+            text_prompts: List of text prompts for each image (List[List[str]])
                         IMPORTANT: text queries need to be lowercased + end with a dot
-            box_threshold: Confidence threshold for bounding boxes
-            text_threshold: Confidence threshold for text matching
+            confidence_threshold: Confidence threshold for detections
             
         Returns:
-            List of detection dictionaries with boxes, labels and scores
+            List[List[dict]]: List of detection lists for each image. Each detection is
+            a dictionary with 'score', 'label', and 'box' keys.
         """
-        # Convert numpy array to PIL Image if needed
-        if not isinstance(image_data, Image.Image):
-            image_data = Image.fromarray(image_data)
-            
-        inputs = self.processor(images=image_data, text=text_prompt, return_tensors="pt").to(self.device)
-        
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-        
-        # Convert model outputs to usable format
-        target_sizes = torch.tensor([image_data.size[::-1]]).to(self.device)
-        #FIXME: there is a warning here, but it's not clear what it is about grounding dino label. 
-        results = self.processor.post_process_grounded_object_detection(
-            outputs, 
-            inputs.input_ids, 
-            box_threshold=box_threshold,
-            text_threshold=text_threshold,
-            target_sizes=target_sizes,
+        # Convert text_prompts to strings if needed (handling both formats)
+        string_prompts = []
+        for prompts in text_prompts:
+            if isinstance(prompts, list):
+                string_prompts.append('. '.join(prompts) + '.')
+            else:
+                string_prompts.append(prompts)
+                
+        # Process batch using the model's processor
+        inputs = self.processor(
+            images=images_data,
+            text=string_prompts,
+            return_tensors="pt",
+            padding="longest",
+            truncation=True
         )
         
-        detections = []
-        for result in results:
-            boxes = result["boxes"]
-            scores = result["scores"]
-            labels = result.get("text_labels", result.get("labels", []))  # Handle both old and new versions of the API
-            
-            for box, score, label in zip(boxes, scores, labels):
-                x1, y1, x2, y2 = box.tolist()
-                
-                detection = DetectionResult(
-                    score=score.item(),
-                    label=label,
-                    box=BoundingBox(xmin=x1, ymin=y1, xmax=x2, ymax=y2)
-                )
-                
-                detections.append(detection)
+        # Move inputs to device
+        inputs_on_device = {k: v.to(self.device) for k, v in inputs.items()}
         
-        return results, detections
+        # Run model inference
+        with torch.no_grad():
+            outputs = self.model(**inputs_on_device)
+        
+        # Prepare target sizes for post-processing (height, width)
+        target_sizes_list = [img.size[::-1] for img in images_data]  # List of (height, width) tuples
+        target_sizes_tensor = torch.tensor(target_sizes_list, device=self.device)
+        
+        # Post-process results
+        results = self.processor.post_process_grounded_object_detection(
+            outputs,
+            inputs.input_ids,
+            box_threshold=self.config.get_param("detection_settings.box_threshold", 0.3),
+            text_threshold=self.config.get_param("detection_settings.text_threshold", 0.3),
+            target_sizes=target_sizes_tensor
+        )
+        
+        # Convert the model outputs to the required List[List[dict]] format
+        results_final = []
+        
+        for image_result in results:  # Iterate through each image result
+            detections_for_image = []
+            
+            # Get boxes, scores, and labels for this image
+            boxes = image_result["boxes"]
+            scores = image_result["scores"]
+            labels = image_result.get("text_labels", image_result.get("labels", []))  # Handle both API versions
+            
+            # For each detection in this image
+            for i in range(len(scores)):
+                box = boxes[i].tolist()  # [x1, y1, x2, y2]
+                score = scores[i].item()
+                label = labels[i] if isinstance(labels[i], str) else self.model.config.id2label[labels[i].item()]
+                
+                detection_dict = {
+                    'score': score,
+                    'label': label,
+                    'box': box
+                }
+                
+                detections_for_image.append(detection_dict)
+            
+            results_final.append(detections_for_image)
+        
+        return results_final

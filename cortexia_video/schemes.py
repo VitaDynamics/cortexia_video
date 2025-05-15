@@ -28,6 +28,12 @@ class DetectionResult(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
+    def dict(self, **kwargs):
+        """Override dict method to handle features"""
+        data = super().dict(**kwargs)
+        # Keep mask and features in serialization
+        return data
+
     @classmethod
     def from_dict(cls, detection_dict: Dict) -> "DetectionResult":
         return cls(
@@ -41,6 +47,8 @@ class DetectionResult(BaseModel):
             ),
             id=detection_dict.get("id", str(uuid.uuid4())),
             description=detection_dict.get("description"),
+            mask=detection_dict.get("mask"),
+            object_clip_features=detection_dict.get("object_clip_features"),
         )
 
 
@@ -77,7 +85,10 @@ class FrameData(BaseModel):
     detections: List[DetectionResult] = Field(default_factory=list)
     segments: List[SegmentationResult] = Field(default_factory=list)
     features: Dict[str, Any] = Field(default_factory=dict)
-    scene_clip_features: Optional[List[float]] = None
+    dino_prompt: Optional[str] = None
+
+    # clip features
+    scene_clip_features: Optional[np.ndarray] = None
 
     class Config:
         arbitrary_types_allowed = True
