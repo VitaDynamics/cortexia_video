@@ -1,6 +1,7 @@
 from PIL import Image
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, Tuple
+import cv2
 
 def crop_pil_image_from_mask(original_pil_image: Image.Image, mask_array: np.ndarray, box_xyxy: Optional[List[float]] = None) -> Optional[Image.Image]:
     """
@@ -15,19 +16,24 @@ def crop_pil_image_from_mask(original_pil_image: Image.Image, mask_array: np.nda
         Cropped image with transparency mask applied, or None if invalid
     """
     if mask_array.dtype != np.uint8:
+        print("Mask array is not uint8")
         mask_array = mask_array.astype(np.uint8)
     
     if mask_array.max() == 0:  # Empty mask
+        print("Empty mask")
         return None
 
     # Ensure mask is 2D
     if mask_array.ndim == 3 and mask_array.shape[0] == 1:  # (1, H, W)
+        print("Mask array is 3D and has 1 channel")
         mask_array = mask_array.squeeze(0)
     elif mask_array.ndim != 2:  # Not (H,W)
         # Try to find a valid 2D slice if it's like (H, W, 1)
         if mask_array.ndim == 3 and mask_array.shape[-1] == 1:
+            print("Mask array is 3D and has 1 channel")
             mask_array = mask_array.squeeze(-1)
         else:
+            print("Cannot process this mask shape")
             return None  # Cannot process this mask shape
 
     # Get bounding box from mask contours or provided box
@@ -50,6 +56,7 @@ def crop_pil_image_from_mask(original_pil_image: Image.Image, mask_array: np.nda
     y_max = min(original_pil_image.height, y_max)
 
     if x_min >= x_max or y_min >= y_max:
+        print("Invalid box")
         return None  # Invalid box
 
     cropped_image_from_box = original_pil_image.crop((x_min, y_min, x_max, y_max))
@@ -66,29 +73,37 @@ def crop_pil_image_from_mask(original_pil_image: Image.Image, mask_array: np.nda
     return cropped_image_from_box
 
 
-class UtilManager:
+def mask_to_polygon(mask: np.ndarray) -> List[List[int]]:
+    # Find contours in the binary mask
+    contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Find the contour with the largest area
+    largest_contour = max(contours, key=cv2.contourArea)
+
+    # Extract the vertices of the contour
+    polygon = largest_contour.reshape(-1, 2).tolist()
+
+    return polygon
+
+def polygon_to_mask(polygon: List[Tuple[int, int]], image_shape: Tuple[int, int]) -> np.ndarray:
     """
-    Utility manager class for various helper functions
+    Convert a polygon to a segmentation mask.
+
+    Args:
+    - polygon (list): List of (x, y) coordinates representing the vertices of the polygon.
+    - image_shape (tuple): Shape of the image (height, width) for the mask.
+
+    Returns:
+    - np.ndarray: Segmentation mask with the polygon filled.
     """
-    
-    def __init__(self, logger=None):
-        """
-        Initialize the utility manager
-        
-        Args:
-            logger: Optional logger instance
-        """
-        self.logger = logger
-        
-    def crop_pil_image_from_mask(self, original_pil_image: Image.Image, 
-                                mask_array: np.ndarray, 
-                                box_xyxy: Optional[List[float]] = None) -> Optional[Image.Image]:
-        """
-        Class method wrapper for crop_pil_image_from_mask
-        """
-        try:
-            return crop_pil_image_from_mask(original_pil_image, mask_array, box_xyxy)
-        except Exception as e:
-            if self.logger:
-                self.logger.error(f"Error cropping image from mask: {e}")
-            return None
+    # Create an empty mask
+    mask = np.zeros(image_shape, dtype=np.uint8)
+
+    # Convert polygon to an array of points
+    pts = np.array(polygon, dtype=np.int32)
+
+    # Fill the polygon with white color (255)
+    cv2.fillPoly(mask, [pts], color=(255,))
+
+    return mask
+

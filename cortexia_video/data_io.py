@@ -14,12 +14,12 @@ def load_video_frames(
 ) -> Generator[Tuple[Any, Any, Any], None, None]:
     """
     Load frames from a video file with specified interval.
-    
+
     Args:
         video_path: Path to the video file
         frame_interval: Interval between frames to process
         batch_size: Number of frames to process in a batch
-        
+
     Returns:
         If batch_size=1: Generator yielding (frame_number, timestamp, frame)
         If batch_size>1: Generator yielding (batch_frames_meta, batch_frames_np, None)
@@ -38,8 +38,9 @@ def load_video_frames(
 
         # Generate frame indices based on interval
         frame_indices = range(0, total_frames, frame_interval)
-        
+
         if batch_size == 1:
+            # FIXME: Legacy behavior - yield individual frames
             # Original behavior - yield individual frames
             for frame_count in frame_indices:
                 # Read the frame at the specified index
@@ -54,21 +55,21 @@ def load_video_frames(
             # Initialize batch containers
             batch_frames_meta_list = []
             batch_frames_np_list = []
-            
+
             for frame_count in frame_indices:
                 # Read the frame at the specified index
                 frame_np = vr[frame_count].asnumpy()
-                
+
                 # Calculate timestamp
                 timestamp = frame_count / fps
-                
+
                 # Create metadata
-                meta = {'frame_number': frame_count, 'timestamp': timestamp}
-                
+                meta = {"frame_number": frame_count, "timestamp": timestamp}
+
                 # Append to lists
                 batch_frames_meta_list.append(meta)
                 batch_frames_np_list.append(frame_np)
-                
+
                 # Check if the batch is full
                 if len(batch_frames_np_list) == batch_size:
                     # Yield the batch with None as third element for compatibility
@@ -76,7 +77,7 @@ def load_video_frames(
                     # Reset the lists
                     batch_frames_meta_list = []
                     batch_frames_np_list = []
-            
+
             # After the loop, if there are leftover frames, yield them
             if batch_frames_np_list:
                 yield batch_frames_meta_list, batch_frames_np_list, None
@@ -122,6 +123,7 @@ def save_annotations(video_content: VideoContent, output_path: str):
     # Process frames to extract metadata
     detections_by_id = {}
     segmentations_by_id = {}
+    scene_features_by_frame = {}
 
     for frame_num, frame_data in video_content.frames.items():
         frame_meta = {
@@ -129,7 +131,16 @@ def save_annotations(video_content: VideoContent, output_path: str):
             "timestamp": frame_data.timestamp,
             "lister_results": frame_data.lister_results,
             "detection_ids": [],
+            "has_scene_features": False,
         }
+
+        # Store scene-level features if available
+        if (
+            hasattr(frame_data, "scene_clip_features")
+            and frame_data.scene_clip_features is not None
+        ):
+            scene_features_by_frame[str(frame_num)] = frame_data.scene_clip_features
+            frame_meta["has_scene_features"] = True
 
         # Extract detection metadata
         for detection in frame_data.detections:
@@ -143,10 +154,13 @@ def save_annotations(video_content: VideoContent, output_path: str):
                     "xmax": float(detection.box.xmax),
                     "ymax": float(detection.box.ymax),
                 },
+                "has_mask": detection.mask is not None,
+                "has_description": detection.description is not None,
+                "has_features": detection.object_clip_features is not None,
             }
 
             # Include description if available
-            if hasattr(detection, "description") and detection.description:
+            if detection.description:
                 detection_dict["description"] = detection.description
 
             # Store detection ID in frame metadata
@@ -175,5 +189,11 @@ def save_annotations(video_content: VideoContent, output_path: str):
     segmentations_path = save_dir / f"{prefix}segmentations.pkl"
     with open(segmentations_path, "wb") as f:
         pickle.dump(segmentations_by_id, f)
+
+    # 4. Save scene features pickle file
+    if scene_features_by_frame:
+        scene_features_path = save_dir / f"{prefix}scene_features.pkl"
+        with open(scene_features_path, "wb") as f:
+            pickle.dump(scene_features_by_frame, f)
 
     return str(meta_json_path)

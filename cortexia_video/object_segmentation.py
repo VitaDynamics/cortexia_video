@@ -6,7 +6,11 @@ import torch
 from PIL import Image
 from transformers.models.sam import SamModel, SamProcessor
 
+from cortexia_video.utils import mask_to_polygon, polygon_to_mask
 
+
+# NOTE: A label of 1 means the point is a positive prompt-the user wants the segmented mask to include the region around this point.
+# NOTE: A label of 0 means the point is a negative prompt-the user wants the segmented mask to exclude the region around this point.
 class ObjectSegmenter:
     def __init__(self, config_manager):
         """
@@ -18,7 +22,8 @@ class ObjectSegmenter:
         self.config_manager = config_manager
         self.model = None
         self.processor = None
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Support different devices for different model and processor
+        self.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
         self.logger = logging.getLogger(__name__)
         self._load_model()
 
@@ -41,7 +46,7 @@ class ObjectSegmenter:
         batch_input_boxes,  # Can be nested list structure depending on input
         batch_input_points: Optional[List[Optional[List[List[float]]]]] = None,
         batch_input_labels: Optional[List[Optional[List[int]]]] = None,
-    ) -> List[List[np.ndarray]]:
+    ) -> List[np.ndarray]:
         """
         Segment objects in a batch of images using bounding boxes or points as prompts.
 
@@ -84,8 +89,6 @@ class ObjectSegmenter:
                 # Invalid format
                 raise ValueError("Input boxes must be a list of lists for single image")
 
-            # Handle input_points format
-            batch_points = None
             if batch_input_points is not None:
                 if (
                     isinstance(batch_input_points[0], list)
@@ -117,13 +120,89 @@ class ObjectSegmenter:
         else:
             # Handle regular batch processing
             return self._batch_segment_objects(
-                images_data, batch_input_boxes, batch_input_points, batch_input_labels
+                images_data,
+                batch_input_boxes,
+                batch_input_points=batch_input_points,
+                batch_input_labels=batch_input_labels,
             )
+
+    def _pad_input_points(
+        self, batch_input_points: List[List[List[float]]], pad_point_value=-10
+    ):
+        """
+        Pad the input points to the maximum number of points in the batch.
+        """
+        max_points = max(len(points) for points in batch_input_points)
+        padded_points = []
+        for points in batch_input_points:
+            if len(points) < max_points:
+                for _ in range(max_points - len(points)):
+                    points.append([pad_point_value, pad_point_value])
+                padded_points.append(points)
+            else:
+                padded_points.append(points)
+        return padded_points
+
+    def _convert_box_to_point(
+        self, batched_boxes: List[List[List[float]]]
+    ) -> List[List[List[float]]]:
+        """Convert bounding box to point format by calculating its center point.
+
+        Args:
+            box: List of bounding boxes in format [[x_min, y_min, x_max, y_max], ...]
+
+        Returns:
+            List containing [x_center, y_center] coordinates
+        """
+        batched_points = []
+        for frame_boxes in batched_boxes:
+            frame_points = []
+            for object_box in frame_boxes:
+                x_min, y_min, x_max, y_max = object_box
+                x_center = (x_min + x_max) / 2
+                y_center = (y_min + y_max) / 2
+                object_point = [x_center, y_center]
+                frame_points.append(object_point)
+            batched_points.append(frame_points)
+        return batched_points
+
+    def _generate_input_labels(
+        self, batch_input_points: List[List[List[float]]]
+    ) -> List[List[List[int]]]:
+        """
+        Generate input labels for the model.
+        """
+        batched_labels = []
+        for frame_points in batch_input_points:
+            frame_labels = []
+            for object_point in frame_points:
+                frame_labels.append([1])
+            batched_labels.append(frame_labels)
+        return batched_labels
+
+    def _pad_bbox(
+        self, batched_boxes: List[List[List[float]]]
+    ) -> List[List[List[float]]]:
+        """
+        Pad the bounding boxes to the maximum number of boxes in the batch.
+        """
+        max_boxes = max(len(frame_boxes) for frame_boxes in batched_boxes)
+        padded_boxes = []
+        for frame_boxes in batched_boxes:
+            if len(frame_boxes) < max_boxes:
+                frame_padded_boxes = []
+                for _ in range(max_boxes - len(frame_boxes)):
+                    frame_padded_boxes.append([-10, -10, -10, -10])
+                frame_boxes.extend(frame_padded_boxes)
+                padded_boxes.append(frame_boxes)
+            else:
+                padded_boxes.append(frame_boxes)
+        return padded_boxes
 
     def _batch_segment_objects(
         self,
         images_data: List[Image.Image],
-        batch_input_boxes: List[List[List[float]]],
+        batch_input_boxes: Optional[List[List[List[float]]]] = None,
         batch_input_points: Optional[List[Optional[List[List[float]]]]] = None,
         batch_input_labels: Optional[List[Optional[List[int]]]] = None,
     ) -> List[List[np.ndarray]]:
@@ -139,144 +218,57 @@ class ObjectSegmenter:
 
         # Check batch size consistency
         if not batch_input_boxes or len(images_data) != len(batch_input_boxes):
-            self.logger.warning(
+            raise ValueError(
                 "Mismatch between images_data and batch_input_boxes lengths or empty boxes."
             )
-            return [[] for _ in images_data]
 
-        try:
-            final_batched_masks_np = []
+        final_batched_masks_np = []
 
-            # Process images in batch
-            batch_size = self.config_manager.get_param("processing.batch_size", 8)
-            for batch_idx in range(0, len(images_data), batch_size):
-                batch_end = min(batch_idx + batch_size, len(images_data))
+        # Process images in batch
+        batch_size = self.config_manager.get_param("processing.batch_size", 8)
+        for batch_idx in range(0, len(images_data), batch_size):
+            batch_end = min(batch_idx + batch_size, len(images_data))
 
-                # Current batch slices
-                current_images = images_data[batch_idx:batch_end]
-                current_boxes = batch_input_boxes[batch_idx:batch_end]
+            # Current batch slices
+            current_images = images_data[batch_idx:batch_end]
+            current_boxes = batch_input_boxes[batch_idx:batch_end]
 
-                # Handle optional inputs for current batch
-                current_points = None
-                if batch_input_points:
-                    current_points = batch_input_points[batch_idx:batch_end]
+            # Handle optional inputs for current batch
+            current_points = None
+            if batch_input_points:
+                current_points = batch_input_points[batch_idx:batch_end]
 
-                current_labels = None
-                if batch_input_labels:
-                    current_labels = batch_input_labels[batch_idx:batch_end]
+            current_labels = None
+            if batch_input_labels:
+                current_labels = batch_input_labels[batch_idx:batch_end]
+            padded_current_boxes = self._pad_bbox(current_boxes)
+            # Process inputs for the current batch
+            inputs = self.processor(
+                images=current_images,
+                input_boxes=padded_current_boxes,
+                # input_points=current_points,
+                # input_labels=current_labels,
+                return_tensors="pt",
+            )
 
-                # Process inputs for the current batch
-                inputs = self.processor(
-                    images=current_images,
-                    input_boxes=current_boxes,
-                    input_points=current_points,
-                    input_labels=current_labels,
-                    return_tensors="pt",
-                )
+            # Move inputs to device
+            for k, v in inputs.items():
+                if isinstance(v, torch.Tensor):
+                    inputs[k] = v.to(self.device)
 
-                # Move inputs to device
-                for k, v in inputs.items():
-                    if isinstance(v, torch.Tensor):
-                        inputs[k] = v.to(self.device)
+            # Get segmentation masks
+            with torch.no_grad():
+                outputs = self.model(**inputs)
 
-                # Get segmentation masks
-                with torch.no_grad():
-                    outputs = self.model(**inputs)
+            masks = self.processor.post_process_masks(
+                masks=outputs.pred_masks,
+                original_sizes=inputs.original_sizes,
+                reshaped_input_sizes=inputs.reshaped_input_sizes,
+            )
+            masks_tensor = torch.stack(masks, dim=0).squeeze()
+            final_batched_masks_np = self._refine_masks(masks_tensor)
 
-                # Prepare parameters for post-processing
-                original_sizes = [
-                    img.size[::-1] for img in current_images
-                ]  # List of (H, W) tuples
-
-                # Access tensor data correctly
-                reshaped_input_sizes = []
-                if "reshaped_input_sizes" in inputs and hasattr(
-                    inputs["reshaped_input_sizes"], "cpu"
-                ):
-                    reshaped_input_sizes = inputs["reshaped_input_sizes"].cpu().tolist()
-
-                # Get prediction masks and scores
-                all_pred_masks_tensor = outputs.pred_masks
-                batched_iou_scores = (
-                    outputs.iou_scores if hasattr(outputs, "iou_scores") else None
-                )
-
-                # Post-process masks
-                masks_list = []
-                for i in range(len(current_images)):
-                    # Get masks for this image
-                    image_masks = (
-                        all_pred_masks_tensor[i]
-                        if i < all_pred_masks_tensor.shape[0]
-                        else None
-                    )
-
-                    if image_masks is None:
-                        masks_list.append([])
-                        continue
-
-                    # Get original image size
-                    original_size = original_sizes[i]
-
-                    # Get reshaped size
-                    reshaped_size = None
-                    if reshaped_input_sizes and i < len(reshaped_input_sizes):
-                        reshaped_size = reshaped_input_sizes[i]
-
-                    # Get the iou scores for this image
-                    iou_scores = None
-                    if (
-                        batched_iou_scores is not None
-                        and i < batched_iou_scores.shape[0]
-                    ):
-                        iou_scores = batched_iou_scores[i]
-
-                    # Process masks for this image
-                    masks_for_image = []
-                    for j in range(image_masks.shape[0]):
-                        mask = image_masks[j].cpu()
-
-                        # Resize mask to original image size
-                        # TODO: Need check the efficiency of this operation
-                        if reshaped_size:
-                            # Check dimensionality of the mask and reshape appropriately
-                            if len(mask.shape) == 3:
-                                # If mask has shape [3, height, width]
-                                mask = torch.nn.functional.interpolate(
-                                    mask.unsqueeze(
-                                        0
-                                    ),  # Add batch dimension [1, 3, height, width]
-                                    size=original_size,
-                                    mode="bilinear",
-                                    align_corners=False,
-                                )
-                                mask = mask.squeeze(0)  # Remove batch dimension
-                            else:
-                                # Original approach for shape [height, width]
-                                mask = torch.nn.functional.interpolate(
-                                    mask.unsqueeze(0).unsqueeze(
-                                        0
-                                    ),  # Add batch and channel dimensions
-                                    size=original_size,
-                                    mode="bilinear",
-                                    align_corners=False,
-                                )
-                                mask = mask.squeeze()
-
-                        # Threshold the mask
-                        binary_mask = (mask > 0.0).numpy().astype(np.uint8)
-                        masks_for_image.append(binary_mask)
-
-                    masks_list.append(masks_for_image)
-
-                # Add masks for this batch to the final result
-                final_batched_masks_np.extend(masks_list)
-
-            return final_batched_masks_np
-
-        except Exception as e:
-            self.logger.error(f"Error during segmentation: {str(e)}")
-            raise RuntimeError(f"Error during segmentation: {str(e)}")
+        return final_batched_masks_np
 
     # For complete backward compatibility with older code
     def segment_object_single(
@@ -411,3 +403,56 @@ class ObjectSegmenter:
         # Convert back to PIL
         img_with_contour_pil = Image.fromarray((img * 255.0).astype(np.uint8))
         return img_with_contour_pil
+
+    def _refine_masks(
+        self, masks, polygon_refinement: bool = False
+    ) -> List[List[np.ndarray]]:
+        # Handle input with shape [B, N, C, H, W] where N is number of objects per frame
+        # B: batch size, N: number of objects, C: channels, H: height, W: width
+        masks = masks.cpu().float()
+
+        # Check if we have the object dimension (5D tensor)
+        if len(masks.shape) == 5:
+            B, N, C, H, W = masks.shape
+            masks_list = []
+
+            # Process each batch
+            for b in range(B):
+                frame_masks = []
+                # Process each object in the frame
+                for n in range(N):
+                    # Extract single object mask and process it
+                    mask = masks[b, n].permute(1, 2, 0)  # [C, H, W] -> [H, W, C]
+                    mask = mask.mean(axis=-1)  # Average across channels
+                    mask = (mask > 0).int()
+                    mask_np = mask.numpy().astype(np.uint8)
+
+                    # Apply polygon refinement if requested
+                    if polygon_refinement:
+                        shape = mask_np.shape
+                        polygon = mask_to_polygon(mask_np)
+                        mask_np = polygon_to_mask(polygon, shape)
+
+                    frame_masks.append(mask_np)
+                masks_list.append(frame_masks)
+            return masks_list
+        else:
+            # Fallback to original processing for [B, C, H, W] format
+            masks = masks.permute(0, 2, 3, 1)  # [B, C, H, W] -> [B, H, W, C]
+            masks = masks.mean(axis=-1)
+            masks = (masks > 0).int()
+            masks_np = masks.numpy().astype(np.uint8)
+
+            # Convert to list of lists for batch processing
+            masks_list = [[mask] for mask in masks_np]
+
+            # Apply polygon refinement if requested
+            if polygon_refinement:
+                for b_idx, frame_masks in enumerate(masks_list):
+                    for m_idx, mask in enumerate(frame_masks):
+                        shape = mask.shape
+                        polygon = mask_to_polygon(mask)
+                        refined_mask = polygon_to_mask(polygon, shape)
+                        masks_list[b_idx][m_idx] = refined_mask
+
+            return masks_list

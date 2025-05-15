@@ -22,7 +22,7 @@ def parse_arguments():
         "--config",
         type=str,
         help="Path to configuration file (TOML, YAML, or JSON)",
-        default="./config.toml",
+        default="config/example_config.toml",
     )
 
 
@@ -39,7 +39,8 @@ def parse_arguments():
 def iterate_video(videos_dir: str):
     """Iterate over all videos in the given directory."""
     for video_file in os.listdir(videos_dir):
-        yield os.path.join(videos_dir, video_file)
+        if video_file.endswith(".mp4") or video_file.endswith(".avi") or video_file.endswith(".mov") or video_file.endswith(".mkv"):
+            yield os.path.join(videos_dir, video_file)
 
 
 def main():
@@ -48,13 +49,9 @@ def main():
         # Parse command line arguments
         args = parse_arguments()
 
-        # Check if the specified config file exists
-        config_file_path = args.config
-        if config_file_path and not os.path.isabs(config_file_path):
-            # Convert relative path to absolute
-            config_file_path = os.path.abspath(config_file_path)
-
         # Create ConfigManager with the specified config file
+        # parse as absolute path
+        config_file_path = os.path.abspath(args.config)
         config_manager = ConfigManager(config_file_path=config_file_path)
 
         # Load the configuration
@@ -91,7 +88,8 @@ def main():
 
         # Process the video
         manager = ProcessingManager(config_manager=config_manager)
-        for video_file in iterate_video(args.videos_dir):
+        manager.load_components(processing_mode=processing_mode)
+        for video_file in iterate_video(videos_dir=manager.config_manager.get_param("processing.input_video_path")):
             # TODO: Currently do not support real batch processing.
             output_file = manager.process_video(video_path=video_file, processing_mode=processing_mode)
 
