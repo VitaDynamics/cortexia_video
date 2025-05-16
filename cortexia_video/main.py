@@ -90,7 +90,6 @@ def main():
         manager = ProcessingManager(config_manager=config_manager)
         manager.load_components(processing_mode=processing_mode)
         for video_file in iterate_video(videos_dir=manager.config_manager.get_param("processing.input_video_path")):
-            # TODO: Currently do not support real batch processing.
             output_file = manager.process_video(video_path=video_file, processing_mode=processing_mode)
 
         if output_file:
@@ -109,3 +108,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
