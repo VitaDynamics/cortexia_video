@@ -106,7 +106,7 @@ class Qwen2_5VLLister(ObjectLister):
         super().__init__(config_manager)
         model_name = config_manager.get_param("model_settings.object_listing_model")
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            model_name, torch_dtype=torch.bfloat16, device_map="cuda:1"
+            model_name, torch_dtype=torch.bfloat16, device_map="cuda:0"
         )
         self.processor = AutoProcessor.from_pretrained(model_name)
 

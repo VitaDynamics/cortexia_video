@@ -116,7 +116,7 @@ class CLIPFeatureExtractor(FeatureExtractor):
         """
         super().__init__(config_manager)
         model_name = config_manager.get_param('model_settings.clip_feature_model')
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
         self.model = pe.CLIP.from_config(model_name, pretrained=True)
         self.model.to(self.device)
         self.image_preprocess = pe_transforms.get_image_transform(self.model.image_size)

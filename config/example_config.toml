@@ -27,7 +27,7 @@ default_mode = "list | detect | segment  | extract_scene | extract_object"
 input_video_path = "sample_data/"
 output_directory = "output/" # Output directory for the processed video for visualization. Only works if visualization is enabled.
 frame_interval = 30
-batch_size = 4
+batch_size = 6
 
 [visualization]
 enabled = true
