@@ -185,19 +185,26 @@ class ObjectSegmenter:
     ) -> List[List[List[float]]]:
         """
         Pad the bounding boxes to the maximum number of boxes in the batch.
+        Returns padded boxes and a mask indicating which boxes are padded.
         """
         max_boxes = max(len(frame_boxes) for frame_boxes in batched_boxes)
         padded_boxes = []
+        padding_mask = []  # Track which boxes are padded (True = real box, False = padded)
+
         for frame_boxes in batched_boxes:
+            frame_padding_mask = [True] * len(frame_boxes)
             if len(frame_boxes) < max_boxes:
                 frame_padded_boxes = []
                 for _ in range(max_boxes - len(frame_boxes)):
                     frame_padded_boxes.append([-10, -10, -10, -10])
+                    frame_padding_mask.append(False)  # Mark as padded
                 frame_boxes.extend(frame_padded_boxes)
                 padded_boxes.append(frame_boxes)
             else:
                 padded_boxes.append(frame_boxes)
-        return padded_boxes
+            padding_mask.append(frame_padding_mask)
+
+        return padded_boxes, padding_mask
 
     def _batch_segment_objects(
         self,
@@ -241,7 +248,10 @@ class ObjectSegmenter:
             current_labels = None
             if batch_input_labels:
                 current_labels = batch_input_labels[batch_idx:batch_end]
-            padded_current_boxes = self._pad_bbox(current_boxes)
+
+            # Pad boxes and track which ones are real vs padded
+            padded_current_boxes, padding_mask = self._pad_bbox(current_boxes)
+
             # Process inputs for the current batch
             inputs = self.processor(
                 images=current_images,
@@ -266,9 +276,56 @@ class ObjectSegmenter:
                 reshaped_input_sizes=inputs.reshaped_input_sizes,
             )
             masks_tensor = torch.stack(masks, dim=0).squeeze()
-            final_batched_masks_np = self._refine_masks(masks_tensor)
+            refined_masks = self._refine_masks(masks_tensor)
+            # Remove padded and empty masks
+            final_batched_masks_np.extend(
+                self._remove_padded_masks(refined_masks, padding_mask)
+            )
 
         return final_batched_masks_np
+
+    def _remove_padded_masks(
+        self, masks: List[List[np.ndarray]], padding_mask: List[List[bool]]
+    ) -> List[List[np.ndarray]]:
+        """
+        Remove masks corresponding to padded boxes and empty masks.
+
+        Args:
+            masks: List of lists of masks, one list per image
+            padding_mask: List of lists of booleans indicating which boxes are real (True) vs padded (False)
+
+        Returns:
+            Cleaned list of lists of masks with only real, non-empty masks
+        """
+        empty_count = 0
+        padded_count = 0
+        cleaned_masks = []
+
+        for i, frame_masks in enumerate(masks):
+            # Create a new list with only non-padded, non-empty masks
+            frame_cleaned_masks = []
+            frame_padding = padding_mask[i] if i < len(padding_mask) else []
+
+            for j, mask in enumerate(frame_masks):
+                # Skip if mask corresponds to a padded box
+                if j < len(frame_padding) and not frame_padding[j]:
+                    padded_count += 1
+                    continue
+
+                # Skip empty masks (could still be from real boxes, but empty)
+                if mask.sum() == 0:
+                    empty_count += 1
+                    continue
+
+                # Keep only real, non-empty masks
+                frame_cleaned_masks.append(mask)
+
+            cleaned_masks.append(frame_cleaned_masks)
+
+        self.logger.info(
+            f"Removed {padded_count} padded masks and {empty_count} empty masks"
+        )
+        return cleaned_masks
 
     # For complete backward compatibility with older code
     def segment_object_single(
@@ -456,3 +513,26 @@ class ObjectSegmenter:
                         masks_list[b_idx][m_idx] = refined_mask
 
             return masks_list
+
+    def _remove_empty_masks(
+        self, masks: List[List[np.ndarray]]
+    ) -> List[List[np.ndarray]]:
+        """
+        Remove empty masks from the list of masks.
+        """
+        count = 0
+        cleaned_masks = []
+
+        for frame_masks in masks:
+            # Create a new list with only non-empty masks
+            non_empty_masks = []
+            for mask in frame_masks:
+                if mask.sum() > 0:  # Keep only non-empty masks
+                    non_empty_masks.append(mask)
+                else:
+                    count += 1
+
+            cleaned_masks.append(non_empty_masks)
+
+        self.logger.info(f"Removed {count} empty masks")
+        return cleaned_masks

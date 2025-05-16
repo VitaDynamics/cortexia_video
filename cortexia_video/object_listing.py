@@ -41,9 +41,11 @@ class ObjectLister(ABC):
             List of detected objects as strings
         """
         pass
-        
+
     @abstractmethod
-    def list_objects_in_image_batched(self, images_batch: List[Image.Image]) -> List[List[str]]:
+    def list_objects_in_image_batched(
+        self, images_batch: List[Image.Image]
+    ) -> List[List[str]]:
         """
         Extract lists of objects from a batch of images.
 
@@ -104,7 +106,7 @@ class Qwen2_5VLLister(ObjectLister):
         super().__init__(config_manager)
         model_name = config_manager.get_param("model_settings.object_listing_model")
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            model_name, torch_dtype=torch.bfloat16, device_map="auto"
+            model_name, torch_dtype=torch.bfloat16, device_map="cuda:0"
         )
         self.processor = AutoProcessor.from_pretrained(model_name)
 
@@ -158,6 +160,76 @@ class Qwen2_5VLLister(ObjectLister):
                 return []  # Return empty list if labels is not a list
             except Exception:
                 return [x.strip() for x in answer.split(",") if x.strip()]
+        except Exception as e:
+            print(f"Error in Qwen2_5VLLister object listing: {e}")
+            return []
+
+    def list_objects_in_image_batched(
+        self, images_batch: List[Image.Image]
+    ) -> List[List[str]]:
+        """
+        Extract lists of objects from a batch of images.
+
+        Args:
+            images_batch: List of input images (PIL Images)
+
+        Returns:
+            List of lists of detected objects as strings, one list per image
+        """
+        if isinstance(images_batch[0], np.ndarray):
+            images_batch = [Image.fromarray(image) for image in images_batch]
+        prompt = (
+            "Analyze the following image and list the labels of objects in the image. "
+            "Provide the output as a list of strings, where each string in the array is the label of a object. Any label is acceptable."
+        )
+        texts = []
+        for image_data in images_batch:
+            message = [{
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image_data},
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ]
+            text = self.processor.apply_chat_template(
+                message, tokenize=False, add_generation_prompt=True
+            )
+            texts.append(text)
+        try:
+            image_inputs = images_batch
+            video_inputs = None
+            inputs = self.processor(
+                text=texts,
+                images=image_inputs,
+                videos=video_inputs,
+                padding=True,
+                return_tensors="pt",
+            )
+            inputs = inputs.to(self.model.device)
+            generated_ids = self.model.generate(**inputs, max_new_tokens=128)
+            generated_ids_trimmed = [
+                out_ids[len(in_ids) :]
+                for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+            ]
+            output_text = self.processor.batch_decode(
+                generated_ids_trimmed,
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=False,
+            )
+            answers = output_text
+            import ast
+
+            try:
+                final_labels = [] 
+                for answer in answers:
+                    labels = ast.literal_eval(answer)
+                    if isinstance(labels, list):
+                        final_labels.append([str(label) for label in labels])
+                return final_labels
+            except Exception:
+                final_labels = [x.strip() for x in answer.split(",") if x.strip()]
+                return final_labels
         except Exception as e:
             print(f"Error in Qwen2_5VLLister object listing: {e}")
             return []
@@ -286,7 +358,9 @@ class RAMLister(ObjectLister):
             traceback.print_exc()
             raise RuntimeError(f"Failed to initialize RAM model: {e}")
 
-    def list_objects_in_image_batched(self, images_batch: List[Image.Image]) -> List[List[str]]:
+    def list_objects_in_image_batched(
+        self, images_batch: List[Image.Image]
+    ) -> List[List[str]]:
         """
         Extract lists of objects from a batch of images using RAM.
 
@@ -307,14 +381,14 @@ class RAMLister(ObjectLister):
             # Ensure all images are in RGB format
             images_batch = [img.convert("RGB") for img in images_batch]
 
-            from ram import inference_ram_openset as inference
-
             # Process all images in batch
             all_results = []
-            
+
             # Transform and stack all images into a batch tensor
-            batch_tensor = torch.stack([self.transform(img).to(self.device) for img in images_batch])
-            
+            batch_tensor = torch.stack(
+                [self.transform(img).to(self.device) for img in images_batch]
+            )
+
             # Run batch inference
             # with torch.no_grad():
             #     # Note: We're calling inference for each image since RAM doesn't have a native batch inference function
@@ -322,28 +396,38 @@ class RAMLister(ObjectLister):
             #     for i in range(len(images_batch)):
             #         single_image_tensor = batch_tensor[i:i+1]  # Keep batch dimension
             #         tags_string = inference(single_image_tensor, self.model)
-                    
+
             #         # Parse tags
             #         tags = [tag.strip().lower() for tag in tags_string.split("|") if tag.strip()]
             #         all_results.append(tags)
-                
+
             # return all_results
 
             with torch.no_grad():
                 batch_tags_string = self.model.generate_tag_openset(batch_tensor)
-                tags = [[tag.strip().lower() for tag in tags_string.split("|") if tag.strip()] for tags_string in batch_tags_string]
-            
+                tags = [
+                    [
+                        tag.strip().lower()
+                        for tag in tags_string.split("|")
+                        if tag.strip()
+                    ]
+                    for tags_string in batch_tags_string
+                ]
+
             return tags
 
         except Exception as e:
             print(f"Error in RAMLister batch object listing: {e}")
             import traceback
+
             traceback.print_exc()
-            
+
             # Return empty lists for all images in the batch
             return [[] for _ in range(len(images_batch))]
-    
-    def list_objects_in_image(self, image_data: Union[Image.Image, np.ndarray]) -> List[str]:
+
+    def list_objects_in_image(
+        self, image_data: Union[Image.Image, np.ndarray]
+    ) -> List[str]:
         """
         Extract a list of objects from a single image using RAM.
 
@@ -360,7 +444,7 @@ class RAMLister(ObjectLister):
             # Convert numpy array to PIL Image if needed
             if isinstance(image_data, np.ndarray):
                 image_data = Image.fromarray(image_data)
-            
+
             # Handle case where image_data is already a list (backward compatibility)
             if isinstance(image_data, list):
                 if len(image_data) == 1:
@@ -371,7 +455,7 @@ class RAMLister(ObjectLister):
                     results = self.list_objects_in_image_batched(image_data)
                     return results[0] if results else []
 
-            # TODO: After add batch inference, remove this is ok now. 
+            # TODO: After add batch inference, remove this is ok now.
             image_data = image_data.convert("RGB")
 
             # Preprocess image
@@ -398,6 +482,8 @@ class RAMLister(ObjectLister):
 # Registry for object listers
 OBJECT_LISTER_REGISTRY = {
     "vikhyatk/moondream2": MoonDreamLister,
-    "qwen/qwen2.5-vl": Qwen2_5VLLister,
+    "Qwen/Qwen2.5-VL-72B-Instruct": Qwen2_5VLLister,
+    "Qwen/Qwen2.5-VL-3B-Instruct": Qwen2_5VLLister,
+    "Qwen/Qwen2.5-VL-7B-Instruct": Qwen2_5VLLister,
     "recognize_anything/ram": RAMLister,
 }

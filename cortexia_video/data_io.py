@@ -39,48 +39,35 @@ def load_video_frames(
         # Generate frame indices based on interval
         frame_indices = range(0, total_frames, frame_interval)
 
-        if batch_size == 1:
-            # FIXME: Legacy behavior - yield individual frames
-            # Original behavior - yield individual frames
-            for frame_count in frame_indices:
-                # Read the frame at the specified index
-                frame = vr[frame_count].asnumpy()
+        # Initialize batch containers
+        batch_frames_meta_list = []
+        batch_frames_np_list = []
 
-                # Calculate timestamp
-                timestamp = frame_count / fps
+        for frame_count in frame_indices:
+            # Read the frame at the specified index
+            frame_np = vr[frame_count].asnumpy()
 
-                # Yield frame with metadata (original format for compatibility)
-                yield frame_count, timestamp, frame
-        elif batch_size > 1:
-            # Initialize batch containers
-            batch_frames_meta_list = []
-            batch_frames_np_list = []
+            # Calculate timestamp
+            timestamp = frame_count / fps
 
-            for frame_count in frame_indices:
-                # Read the frame at the specified index
-                frame_np = vr[frame_count].asnumpy()
+            # Create metadata
+            meta = {"frame_number": frame_count, "timestamp": timestamp}
 
-                # Calculate timestamp
-                timestamp = frame_count / fps
+            # Append to lists
+            batch_frames_meta_list.append(meta)
+            batch_frames_np_list.append(frame_np)
 
-                # Create metadata
-                meta = {"frame_number": frame_count, "timestamp": timestamp}
-
-                # Append to lists
-                batch_frames_meta_list.append(meta)
-                batch_frames_np_list.append(frame_np)
-
-                # Check if the batch is full
-                if len(batch_frames_np_list) == batch_size:
-                    # Yield the batch with None as third element for compatibility
-                    yield batch_frames_meta_list, batch_frames_np_list, None
-                    # Reset the lists
-                    batch_frames_meta_list = []
-                    batch_frames_np_list = []
-
-            # After the loop, if there are leftover frames, yield them
-            if batch_frames_np_list:
+            # Check if the batch is full
+            if len(batch_frames_np_list) == batch_size:
+                # Yield the batch with None as third element for compatibility
                 yield batch_frames_meta_list, batch_frames_np_list, None
+                # Reset the lists
+                batch_frames_meta_list = []
+                batch_frames_np_list = []
+
+        # After the loop, if there are leftover frames, yield them
+        if batch_frames_np_list:
+            yield batch_frames_meta_list, batch_frames_np_list, None
 
     except Exception as e:
         raise RuntimeError(f"Error processing video: {video_path}") from e
