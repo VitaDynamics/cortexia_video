@@ -30,7 +30,7 @@ frame_interval = 30
 batch_size = 6
 
 [visualization]
-enabled = true
+enabled = false
 annotated_image_format = "jpg"
 contour_enabled = true  # Enable contour visualization for segmentation
 contour_thickness = 3   # Thickness of contour lines
