@@ -1,10 +1,13 @@
 import os 
 import pickle
 def main():
-    exmaple = "sample_data/output_rgb_detections.pkl"
-    with open(exmaple, "rb") as f:
+    example = "sample_data/output_rgb_segmentations.pkl"
+    with open(example, "rb") as f:
         data = pickle.load(f)
-    print(data)
 
+    print("Data structure:")
+    print(data.keys())
+    print(data)
+    
 if __name__ == "__main__":
     main()
