@@ -4,7 +4,7 @@ level = "INFO"
 file = "app.log"
 
 [model_settings]
-object_listing_model = "recognize_anything/ram" # Best Usage instead using a VLM model
+object_listing_model = "qwen/qwen2.5-vl" # Best Usage instead using a VLM model
 object_detection_model = "IDEA-Research/grounding-dino-base" # or use YoLo-World
 segmentation_model = "facebook/sam-vit-huge" 
 description_model = "nvidia/DAM-3B-Self-Contained"

@@ -50,7 +50,7 @@ def draw_bounding_box(
 ):
     # Draw bounding box rectangle
     draw.rectangle(
-        [(box.x_min, box.y_min), (box.x_max, box.y_max)],
+        [(box.xmin, box.ymin), (box.xmax, box.ymax)],
         outline=color,
         width=thickness
     )
@@ -63,8 +63,8 @@ def draw_bounding_box(
         
     if display_text:
         # Estimate label position, ensure it's within the image
-        label_x = box.x_min
-        label_y = max(0, box.y_min - 10)
+        label_x = box.xmin
+        label_y = max(0, box.ymin - 10)
         draw.text((label_x, label_y), display_text, fill=color)
 
 def draw_segmentation_mask(
@@ -88,10 +88,9 @@ def draw_segmentation_mask(
     return blended
 
 def generate_annotated_frame(
-    original_image: Image.Image,
     frame_data: FrameData
 ) -> Image.Image:
-    annotated_img = original_image.copy()
+    annotated_img = Image.fromarray(frame_data.rgb_image)
     draw = ImageDraw.Draw(annotated_img, "RGBA")
     
     # Draw detections
@@ -106,8 +105,8 @@ def generate_annotated_frame(
     for segment in frame_data.segments:
         # Check if this segment is already represented in a detection
         already_drawn = any(
-            d.box.x_min == segment.bbox.x_min and
-            d.box.y_min == segment.bbox.y_min and
+            d.box.xmin == segment.bbox.xmin and
+            d.box.ymin == segment.bbox.ymin and
             d.label == segment.label
             for d in frame_data.detections
         )
@@ -146,8 +145,8 @@ def annotate(image: Union[Image.Image, np.ndarray], detection_results: List[Dete
         # Draw bounding box
         cv2.rectangle(
             image_cv2, 
-            (box.x_min, box.y_min), 
-            (box.x_max, box.y_max), 
+            (box.xmin, box.ymin), 
+            (box.xmax, box.ymax), 
             color, 
             2
         )
@@ -156,7 +155,7 @@ def annotate(image: Union[Image.Image, np.ndarray], detection_results: List[Dete
         cv2.putText(
             image_cv2, 
             f'{label}: {score:.2f}', 
-            (box.x_min, box.y_min - 10), 
+            (box.xmin, box.ymin - 10), 
             cv2.FONT_HERSHEY_SIMPLEX, 
             0.5, 
             color, 

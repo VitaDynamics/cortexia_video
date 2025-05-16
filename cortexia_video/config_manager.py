@@ -154,7 +154,7 @@ class ConfigManager:
         """
         Return the correct ObjectLister instance based on the config value using the registry pattern.
         """
-        model_name = self.get_param("model_settings.object_listing_model").lower()
+        model_name = self.get_param("model_settings.object_listing_model")
         for pattern, lister_cls in OBJECT_LISTER_REGISTRY.items():
             if model_name.startswith(pattern):
                 return lister_cls(self)

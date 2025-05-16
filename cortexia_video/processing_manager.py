@@ -845,14 +845,15 @@ class ProcessingManager:
             "processing.output_directory", "output"
         )
 
-        for i, frame_data_obj in enumerate(batch_frame_data_objects):
+        for i, frame_data_obj in enumerate(iterable=batch_frame_data_objects):
+            # visualize the frame after all frame object processing is done. 
             try:
-                pil_image = batch_pil_images[i]
+                pil_image = frame_data_obj.rgb_image
                 frame_number = frame_data_obj.frame_number
 
                 # Generate annotated frame
                 annotated_pil_image = generate_annotated_frame(
-                    pil_image, frame_data_obj
+                 frame_data=frame_data_obj
                 )
 
                 # Save annotated frame

@@ -89,7 +89,6 @@ class ObjectDescriber:
         top_p = self.config_manager.get_param('description_settings.top_p', 0.5)
         num_beams = self.config_manager.get_param('description_settings.num_beams', 1)
         max_new_tokens = self.config_manager.get_param('description_settings.max_tokens', 512)
-        
         # Generate description
         try:
             if streaming:
@@ -129,6 +128,7 @@ class ObjectDescriber:
             self.logger.error(f"Error during description generation: {str(e)}")
             return f"Error generating description: {str(e)}"
     
+    #TODO:  Legacy Function 
     def create_visualization(self, 
                            image: Image.Image, 
                            mask: np.ndarray, 
