@@ -32,24 +32,6 @@ class ConfigManager:
         self.config_data: Dict[str, Any] = {}
         self.logger = logging.getLogger(__name__)
 
-    def validate_batch_size(self) -> None:
-        """
-        Validate that the batch_size parameter is an integer if it exists.
-
-        Raises:
-            ValueError: If batch_size is not an integer
-        """
-        if (
-            "processing" in self.config_data
-            and "batch_size" in self.config_data["processing"]
-        ):
-            batch_size = self.config_data["processing"]["batch_size"]
-            if not isinstance(batch_size, int) or batch_size <= 0:
-                raise ValueError(
-                    f"batch_size must be a positive integer, got {batch_size} ({type(batch_size).__name__})"
-                )
-            self.logger.info(f"Validated batch_size: {batch_size}")
-
     def load_config(self) -> None:
         """Load configuration from the specified file path or search in the config directory."""
         if self.config_file_path and os.path.exists(self.config_file_path):
@@ -72,8 +54,6 @@ class ConfigManager:
                 raise FileNotFoundError(
                     f"Config file found at {file_path} but is empty or invalid."
                 )
-            # Validate batch_size if present
-            self.validate_batch_size()
             return
 
         # Fallback to searching in config_dir if config_file_path is not provided or not found
@@ -91,16 +71,12 @@ class ConfigManager:
             with open(json_path, "r") as f:
                 self.config_data = json.load(f)
 
-        # Validate batch_size if config was loaded successfully
-        if self.config_data:
-            self.validate_batch_size()
-        else:
-            paths_searched = [toml_path, yaml_path, json_path]
-            if self.config_file_path:  # If a specific path was given but not found
-                paths_searched.insert(0, self.config_file_path)
-            raise FileNotFoundError(
-                f"No config file found. Searched at: {', '.join(paths_searched)}"
-            )
+        paths_searched = [toml_path, yaml_path, json_path]
+        if self.config_file_path:  # If a specific path was given but not found
+            paths_searched.insert(0, self.config_file_path)
+        raise FileNotFoundError(
+            f"No config file found. Searched at: {', '.join(paths_searched)}"
+        )
 
     def get_param(self, key: str, default: Optional[Any] = None) -> Any:
         """

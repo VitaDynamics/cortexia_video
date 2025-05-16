@@ -37,7 +37,7 @@ class ProcessingManager:
         self.logger = logging.getLogger(__name__)
 
         # Get batch processing configuration
-        self.batch_size = self.config_manager.get_param("processing.batch_size", 4)
+        self.batch_size = self.config_manager.get_param("processing.batch_size", 16)
         self.logger.info(f"Using batch size: {self.batch_size}")
 
         # Initialize component variables to None
@@ -641,6 +641,7 @@ class ProcessingManager:
                                 pass
 
                         mask_idx += 1
+                return 
 
             except Exception as e:
                 self.logger.error(
@@ -848,9 +849,8 @@ class ProcessingManager:
         for i, frame_data_obj in enumerate(iterable=batch_frame_data_objects):
             # visualize the frame after all frame object processing is done. 
             try:
-                pil_image = frame_data_obj.rgb_image
                 frame_number = frame_data_obj.frame_number
-
+                print(f"Processing frame {frame_number}")
                 # Generate annotated frame
                 annotated_pil_image = generate_annotated_frame(
                  frame_data=frame_data_obj
@@ -876,6 +876,7 @@ class ProcessingManager:
                     exc_info=True,
                 )
 
+# TODO: This should be a verifier works all pipeline steps. now we use it for final step. 
     def verify_processing_results(
         self, video_content: VideoContent, processing_mode: str
     ) -> Dict[str, Any]:

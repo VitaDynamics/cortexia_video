@@ -4,12 +4,11 @@ file = "app.log"
 
 [model_settings]
 object_listing_model = "Qwen/Qwen2.5-VL-3B-Instruct" # Best Usage instead using a VLM model
-object_detection_model = "IDEA-Research/grounding-dino-tiny" # or use YoLo-World
-segmentation_model = "facebook/sam-vit-base" 
+object_detection_model = "IDEA-Research/grounding-dino-base" # or use YoLo-World
+segmentation_model = "facebook/sam-vit-huge" 
 description_model = "nvidia/DAM-3B-Self-Contained"
 clip_feature_model = "PE-Core-B16-224" # Current SOTA CLIP like Vision Encoder.
 clip_feature_model_identifier = "clip_pe"
-
 
 [detection_settings]
 box_threshold = 0.3
@@ -24,10 +23,11 @@ max_tokens = 512
 
 
 [processing]
-default_mode = "list | detect | segment | describe | extract_scene | extract_object"
+default_mode = "list | detect | segment  | extract_scene | extract_object"
 input_video_path = "sample_data/"
 output_directory = "output/" # Output directory for the processed video for visualization. Only works if visualization is enabled.
-frame_interval = 300
+frame_interval = 30
+batch_size = 4
 
 [visualization]
 enabled = true
