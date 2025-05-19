@@ -10,7 +10,6 @@ from cortexia_video.processing_manager import ProcessingManager
 logger = logging.getLogger(__name__)
 
 
-# TODO: expeted to use decord
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(

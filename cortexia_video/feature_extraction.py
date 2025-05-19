@@ -14,7 +14,6 @@ import perception_models.core.vision_encoder.transforms as pe_transforms
 
 
 def preprocess_video(video_path, num_frames=8, transform=None, return_first_frame_for_demo=False):
-    # TODO: make this working with VideoContent class. It can work with out video preprocessing workflow.
     """
     Uniformly samples a specified number of frames from a video and preprocesses them.
     

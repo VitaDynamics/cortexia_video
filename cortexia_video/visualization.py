@@ -430,3 +430,4 @@ def visualize_mask(
         plt.show()
     else:
         plt.close()
+
