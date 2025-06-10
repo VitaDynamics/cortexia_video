@@ -1,15 +1,12 @@
-from typing import List, Dict, Any, Optional, Union
+from typing import List
 import torch
-import numpy as np
 from PIL import Image
 from transformers.models.auto.modeling_auto import AutoModelForZeroShotObjectDetection
 from transformers.models.auto.processing_auto import AutoProcessor
-from transformers.models.sam import SamModel, SamProcessor
 from cortexia_video.config_manager import ConfigManager
-from cortexia_video.schemes import DetectionResult, BoundingBox
 
 
-# Add SAHI inference during detection.
+# TODO: Add SAHI inference during detection.
 
 class ObjectDetector:
     def __init__(self, config_manager: ConfigManager):

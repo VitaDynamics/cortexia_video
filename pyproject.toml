@@ -7,7 +7,7 @@ requires-python = ">=3.10"
 authors = [
     { name = "Your Name", email = "you@example.com" },
 ]
-packages = ["cortexia_video"]
+classifiers = ["Private :: Do Not Upload"]
 dependencies = [
     "PyYAML>=6.0",
     "toml>=0.10.2",
@@ -40,5 +40,8 @@ dependencies = [
 cortexia-video = "cortexia_video.main:main"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["cortexia_video"]
