@@ -1,39 +1,55 @@
-# Cortexia Video Project
+# Cortexia Video
 
-
-## Overview
-A Python-based video processing application for analyzing and processing video content.
+Cortexia Video is a deep learning toolkit for analyzing video content. It combines object listing, detection, segmentation and optional description generation into a single command line workflow.
 
 ## Features
-- Video processing capabilities
-- Configuration-based operation
-- Extensible architecture
+- **Object listing** – identify objects present in frames using a vision language model.
+- **Detection** – locate objects with Grounding DINO.
+- **Segmentation** – segment objects using the SAM model.
+- **Description** – (optional) describe segments with NVIDIA DAM.
+- **Feature extraction** – extract CLIP features for scenes or objects.
 
-## Setup Instructions
+## Installation
+1. Clone the repository
+2. Install the dependencies using [uv](https://github.com/astral-sh/uv)
 
-### Prerequisites
-- Python 3.10+
-- Poetry (for dependency management)
-
-### Installation
-1. Clone this repository
-2. Install dependencies:
 ```bash
-poetry install
+uv venv .venv
+source .venv/bin/activate
+uv pip install -r uv.lock
 ```
 
-### Configuration
-Place configuration files in the `config/` directory. Supported formats:
-- config.yml
-- config.json
+## Configuration
+Configuration files live in the `config/` directory. Example TOML files are provided:
 
-### Running the Application
+- `example_config.toml` – balanced defaults
+- `light_mode.toml` – faster models
+- `heavy_mode.toml` – higher quality models
+
+Each configuration defines model names and processing options. You can point the application at any custom file via `--config`.
+
+## Running
+Run the CLI with the desired configuration:
+
 ```bash
-python main.py
+python main.py --config config/example_config.toml
 ```
+
+The configuration option `processing.default_mode` controls the pipeline. Modes are separated with `|` and may include:
+
+- `list` – list objects in frames
+- `detect` – detect objects
+- `segment` – segment detected boxes
+- `describe` – generate descriptions for segments
+- `extract_scene` – extract CLIP features for the full frame
+- `extract_object` – extract features for objects
+
+## Output
+Results are written to the directory specified by `processing.output_directory` in the configuration. When visualization is enabled, annotated frames are saved alongside JSON annotations.
 
 ## Project Structure
-- `cortexia_video/` - Main source package
-- `config/` - Configuration files
-- `docs/` - Project documentation
-- `scripts/` - Project scripts and utilities
+- `cortexia_video/` – source package
+- `config/` – configuration samples
+- `data/` – sample data
+- `chores/` – utility scripts and tests
+
