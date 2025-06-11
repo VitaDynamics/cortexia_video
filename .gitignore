@@ -1,4 +1,5 @@
 .venv
+checkpoints/*
 
 # Added by Claude Task Master
 # Logs
