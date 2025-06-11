@@ -47,10 +47,10 @@ def filter_drivable_tags(tags: list[str]) -> list[str]:
 def collect_images(folder: Path) -> list[Path]:
     """Collect JPG/JPEG images from a folder."""
     patterns = ["*.jpg", "*.jpeg", "*.JPG", "*.JPEG"]
-    images = []
+    all_images = []
     for pattern in patterns:
-        images.extend(sorted(folder.glob(pattern)))
-    return images
+        all_images.extend(folder.glob(pattern))
+    return sorted(all_images)
 
 
 def process_video_folder(folder: Path, lister) -> None:
