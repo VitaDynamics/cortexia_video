@@ -16,8 +16,8 @@ def collect_images(folder: Path) -> list[Path]:
     patterns = ["*.jpg", "*.jpeg", "*.JPG", "*.JPEG"]
     images = []
     for pattern in patterns:
-        images.extend(sorted(folder.glob(pattern)))
-    return images
+        images.extend(folder.glob(pattern))
+    return sorted(images)
 
 
 def load_tags(tag_file: Path) -> list[str]:
