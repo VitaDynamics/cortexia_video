@@ -10,6 +10,8 @@ description_model = "nvidia/DAM-3B-Self-Contained"
 clip_feature_model = "PE-Core-G14-448" # Current SOTA CLIP like Vision Encoder.
 clip_feature_model_identifier = "clip_pe"
 
+[object_listing_settings]
+task_prompt = "Analyze the following image and list the labels of objects in the image. Any label is acceptable."
 
 [detection_settings]
 box_threshold = 0.3

@@ -89,6 +89,8 @@ class ObjectSegmenter:
                 # Invalid format
                 raise ValueError("Input boxes must be a list of lists for single image")
 
+            # Initialize batch_points to None by default
+            batch_points = None
             if batch_input_points is not None:
                 if (
                     isinstance(batch_input_points[0], list)
@@ -275,7 +277,11 @@ class ObjectSegmenter:
                 original_sizes=inputs.original_sizes,
                 reshaped_input_sizes=inputs.reshaped_input_sizes,
             )
-            masks_tensor = torch.stack(masks, dim=0).squeeze()
+            masks_tensor = torch.stack(masks, dim=0)
+            # Only squeeze dimensions of size 1, but be careful not to squeeze too much
+            if masks_tensor.dim() > 4:
+                # If we have 5D tensor [B, 1, N, H, W], squeeze the singleton dimension
+                masks_tensor = masks_tensor.squeeze(1)
             refined_masks = self._refine_masks(masks_tensor)
             # Remove padded and empty masks
             final_batched_masks_np.extend(
@@ -468,9 +474,12 @@ class ObjectSegmenter:
         # B: batch size, N: number of objects, C: channels, H: height, W: width
         masks = masks.cpu().float()
 
-        # Check if we have the object dimension (5D tensor)
-        if len(masks.shape) == 5:
-            B, N, C, H, W = masks.shape
+        self.logger.debug(f"Refining masks with shape: {masks.shape}")
+
+        # Check if we have the object dimension (4D or 5D tensor)
+        if len(masks.shape) == 4:
+            # Shape is [B, N, H, W] - already processed by model
+            B, N, H, W = masks.shape
             masks_list = []
 
             # Process each batch
@@ -478,9 +487,8 @@ class ObjectSegmenter:
                 frame_masks = []
                 # Process each object in the frame
                 for n in range(N):
-                    # Extract single object mask and process it
-                    mask = masks[b, n].permute(1, 2, 0)  # [C, H, W] -> [H, W, C]
-                    mask = mask.mean(axis=-1)  # Average across channels
+                    # Extract single object mask
+                    mask = masks[b, n]  # [H, W]
                     mask = (mask > 0).int()
                     mask_np = mask.numpy().astype(np.uint8)
 
@@ -493,26 +501,88 @@ class ObjectSegmenter:
                     frame_masks.append(mask_np)
                 masks_list.append(frame_masks)
             return masks_list
-        else:
-            # Fallback to original processing for [B, C, H, W] format
-            masks = masks.permute(0, 2, 3, 1)  # [B, C, H, W] -> [B, H, W, C]
-            masks = masks.mean(axis=-1)
-            masks = (masks > 0).int()
-            masks_np = masks.numpy().astype(np.uint8)
 
-            # Convert to list of lists for batch processing
-            masks_list = [[mask] for mask in masks_np]
+        elif len(masks.shape) == 5:
+            # Shape is [B, N, C, H, W] - need to process channels
+            B, N, C, H, W = masks.shape
+            masks_list = []
 
-            # Apply polygon refinement if requested
-            if polygon_refinement:
-                for b_idx, frame_masks in enumerate(masks_list):
-                    for m_idx, mask in enumerate(frame_masks):
-                        shape = mask.shape
-                        polygon = mask_to_polygon(mask)
-                        refined_mask = polygon_to_mask(polygon, shape)
-                        masks_list[b_idx][m_idx] = refined_mask
+            # Process each batch
+            for b in range(B):
+                frame_masks = []
+                # Process each object in the frame
+                for n in range(N):
+                    # Extract single object mask and process it
+                    mask = masks[b, n]  # [C, H, W]
+                    if C > 1:
+                        mask = mask.permute(1, 2, 0)  # [C, H, W] -> [H, W, C]
+                        mask = mask.mean(axis=-1)  # Average across channels
+                    else:
+                        mask = mask.squeeze(0)  # Remove channel dimension if C=1
+                    mask = (mask > 0).int()
+                    mask_np = mask.numpy().astype(np.uint8)
 
+                    # Apply polygon refinement if requested
+                    if polygon_refinement:
+                        shape = mask_np.shape
+                        polygon = mask_to_polygon(mask_np)
+                        mask_np = polygon_to_mask(polygon, shape)
+
+                    frame_masks.append(mask_np)
+                masks_list.append(frame_masks)
             return masks_list
+
+        elif len(masks.shape) == 3:
+            # Shape is [B, H, W] - single mask per batch
+            B, H, W = masks.shape
+            masks_list = []
+
+            # Process each batch
+            for b in range(B):
+                mask = masks[b]  # [H, W]
+                mask = (mask > 0).int()
+                mask_np = mask.numpy().astype(np.uint8)
+
+                # Apply polygon refinement if requested
+                if polygon_refinement:
+                    shape = mask_np.shape
+                    polygon = mask_to_polygon(mask_np)
+                    mask_np = polygon_to_mask(polygon, shape)
+
+                masks_list.append([mask_np])  # Wrap in list for consistency
+            return masks_list
+
+        else:
+            # Fallback: try to handle as original [B, C, H, W] format
+            if len(masks.shape) == 2:
+                # Single mask [H, W]
+                mask = (masks > 0).int()
+                mask_np = mask.numpy().astype(np.uint8)
+                return [[mask_np]]
+            else:
+                # Try original approach but with more robust dimension handling
+                self.logger.warning(
+                    f"Unexpected mask tensor shape: {masks.shape}, attempting fallback processing"
+                )
+
+                # Ensure we have at least 4 dimensions
+                while len(masks.shape) < 4:
+                    masks = masks.unsqueeze(0)
+
+                # Assume last two dimensions are H, W
+                *batch_dims, H, W = masks.shape
+
+                # Flatten all batch dimensions except last two
+                masks_flat = masks.view(-1, H, W)
+                masks_list = []
+
+                for i in range(masks_flat.shape[0]):
+                    mask = masks_flat[i]
+                    mask = (mask > 0).int()
+                    mask_np = mask.numpy().astype(np.uint8)
+                    masks_list.append([mask_np])
+
+                return masks_list
 
     def _remove_empty_masks(
         self, masks: List[List[np.ndarray]]

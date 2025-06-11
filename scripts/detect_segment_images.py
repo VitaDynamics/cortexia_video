@@ -1,49 +1,166 @@
 import argparse
 import json
-from pathlib import Path
 import uuid
-
+from pathlib import Path
+from typing import Any, List
+import sys
 import numpy as np
+from batch_processor import BatchProcessor, collect_images
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from cortexia_video.config_manager import ConfigManager
 from cortexia_video.object_detection import ObjectDetector
 from cortexia_video.object_segmentation import ObjectSegmenter
 
-
-def collect_images(folder: Path) -> list[Path]:
-    """Collect JPG/JPEG images from a folder."""
-    patterns = ["*.jpg", "*.jpeg", "*.JPG", "*.JPEG"]
-    images = []
-    for pattern in patterns:
-        images.extend(folder.glob(pattern))
-    return sorted(images)
+# collect_images is now imported from batch_processor
 
 
-def load_tags(tag_file: Path) -> list[str]:
+def parse_tags_string(tags_string: str) -> List[str]:
+    """Parse a tags string in the format '- tag1\n- tag2\n- tag3' into a list of individual tags.
+
+    Args:
+        tags_string: String containing tags separated by newlines and prefixed with '- '
+
+    Returns:
+        List of individual tag strings
+    """
+    if not tags_string.strip():
+        return []
+
+    # Split by newlines and clean up each tag
+    lines = tags_string.strip().split("\n")
+    tags = []
+
+    for line in lines:
+        line = line.strip()
+        if line.startswith("- "):
+            # Remove the '- ' prefix and any extra whitespace
+            tag = line[2:].strip()
+            if tag:  # Only add non-empty tags
+                tags.append(tag)
+        elif line:  # Handle tags without '- ' prefix
+            tags.append(line)
+
+    return tags
+
+
+def load_tags(tag_file: Path) -> List[str]:
+    """Load and parse tags from a JSON file.
+
+    Args:
+        tag_file: Path to the JSON file containing tags
+
+    Returns:
+        List of individual tag strings
+    """
     if not tag_file.exists():
         return []
+
     with open(tag_file, "r") as f:
         data = json.load(f)
-    return data.get("tags", [])
+
+    raw_tags = data.get("tags", [])
+    if not raw_tags:
+        return []
+
+    # Handle different tag formats
+    all_tags = []
+    for tag_item in raw_tags:
+        if isinstance(tag_item, str):
+            # Check if it's a multi-line string with '- ' prefixes
+            if "\n" in tag_item and "- " in tag_item:
+                parsed_tags = parse_tags_string(tag_item)
+                all_tags.extend(parsed_tags)
+            else:
+                # Single tag string
+                all_tags.append(tag_item.strip())
+        elif isinstance(tag_item, list):
+            # Already a list of tags
+            all_tags.extend(tag_item)
+
+    return all_tags
 
 
-def process_image(image_path: Path, detector: ObjectDetector, segmenter: ObjectSegmenter) -> None:
-    tag_file = image_path.with_name(f"{image_path.stem}_tag.json")
-    tags = load_tags(tag_file)
-    if not tags:
-        print(f"No tags found for {image_path}, skipping")
+def detect_segment_inference_func(
+    images: List[Image.Image],
+    paths: List[Path],
+    detector: ObjectDetector,
+    segmenter: ObjectSegmenter,
+) -> List[Any]:
+    """Inference function for detection and segmentation.
+
+    Args:
+        images: List of PIL Images
+        paths: List of corresponding paths
+        detector: Object detector instance
+        segmenter: Object segmenter instance
+
+    Returns:
+        List of detection and segmentation results
+    """
+    results = []
+
+    # Load tags for all images
+    tags_list = []
+    for path in paths:
+        tag_file = path.with_name(f"{path.stem}_tag.json")
+        tags = load_tags(tag_file)
+        tags_list.append(tags)
+
+    # Filter out images without tags
+    valid_indices = [i for i, tags in enumerate(tags_list) if tags]
+    if not valid_indices:
+        return [None] * len(images)
+
+    valid_images = [images[i] for i in valid_indices]
+    valid_tags = [tags_list[i] for i in valid_indices]
+
+    # Batch detection
+    detections_batch = detector.detect_objects(valid_images, valid_tags)
+
+    # Process each image's detections and get masks
+    valid_results = []
+    for img, detections in zip(valid_images, detections_batch):
+        boxes = [d["box"] for d in detections]
+        masks = []
+        if boxes:
+            masks_batch = segmenter.segment_object(img, boxes)
+            masks = masks_batch[0] if masks_batch else []
+
+        valid_results.append({"detections": detections, "masks": masks})
+
+    # Map results back to original order
+    result_idx = 0
+    for i in range(len(images)):
+        if i in valid_indices:
+            results.append(valid_results[result_idx])
+            result_idx += 1
+        else:
+            results.append(None)
+
+    return results
+
+
+def detect_segment_save_func(path: Path, result: Any) -> None:
+    """Save function for detection and segmentation results.
+
+    Args:
+        path: Original image path
+        result: Detection and segmentation result
+    """
+    tag_file = path.with_name(f"{path.stem}_tag.json")
+
+    if result is None:
+        print(f"No tags found for {path}, skipping")
         return
 
-    with Image.open(image_path) as img:
-        pil_img = img.convert("RGB")
-        detections_batch = detector.detect_objects([pil_img], [tags])
-    detections = detections_batch[0] if detections_batch else []
-    boxes = [d["box"] for d in detections]
-    masks = []
-    if boxes:
-        masks_batch = segmenter.segment_object(pil_img, boxes)
-        masks = masks_batch[0] if masks_batch else []
+    detections = result["detections"]
+    masks = result["masks"]
+
+    # Load original tags
+    tags = load_tags(tag_file)
 
     obj_entries = []
     masks_dict = {}
@@ -66,16 +183,37 @@ def process_image(image_path: Path, detector: ObjectDetector, segmenter: ObjectS
 
     # Save mask npy
     if masks_dict:
-        mask_path = image_path.with_name(f"{image_path.stem}_masks.npy")
+        mask_path = path.with_name(f"{path.stem}_masks.npy")
         np.save(mask_path, masks_dict, allow_pickle=True)
-        print(f"Saved masks for {image_path} -> {mask_path}")
+        print(f"Saved masks for {path} -> {mask_path}")
     else:
-        print(f"No detections for {image_path}")
+        print(f"No detections for {path}")
 
 
-def process_video_folder(folder: Path, detector: ObjectDetector, segmenter: ObjectSegmenter) -> None:
-    for image_path in collect_images(folder):
-        process_image(image_path, detector, segmenter)
+def process_video_folder(
+    folder: Path, detector: ObjectDetector, segmenter: ObjectSegmenter
+) -> None:
+    images = collect_images(folder)
+    if not images:
+        return
+
+    # Initialize batch processor
+    processor = BatchProcessor(batch_size=8)
+
+    # Load images into buffer
+    processor.load_images(images)
+
+    # Create inference function with detector and segmenter
+    def inference_func(imgs, paths):
+        return detect_segment_inference_func(imgs, paths, detector, segmenter)
+
+    # Process batch
+    processor.process_batch(
+        inference_func=inference_func, save_func=detect_segment_save_func
+    )
+
+    # Clean up
+    processor.clear_buffer()
 
 
 def main() -> None:
@@ -91,8 +229,14 @@ def main() -> None:
     parser.add_argument(
         "--config",
         type=Path,
-        default=Path("config/example_config.toml"),
+        default=Path("config/heavy_mode.toml"),
         help="Path to configuration file specifying models",
+    )
+    parser.add_argument(
+        "--min-images",
+        type=int,
+        default=5,
+        help="Minimum number of JPEG images required for a folder to be considered a video folder",
     )
     args = parser.parse_args()
 
@@ -101,8 +245,27 @@ def main() -> None:
     detector = ObjectDetector(cfg)
     segmenter = ObjectSegmenter(cfg)
 
+    print(f"Processing root folder: {args.folder}")
+    print(f"Minimum images required per subfolder: {args.min_images}")
+
+    processed_count = 0
+    skipped_count = 0
+
     for sub in sorted(p for p in args.folder.iterdir() if p.is_dir()):
-        process_video_folder(sub, detector, segmenter)
+        images = collect_images(sub)
+        if len(images) >= args.min_images:
+            print(f"Processing video folder '{sub.name}' with {len(images)} images...")
+            process_video_folder(sub, detector, segmenter)
+            processed_count += 1
+        else:
+            print(
+                f"Skipping folder '{sub.name}' - only {len(images)} images (minimum {args.min_images} required)"
+            )
+            skipped_count += 1
+
+    print(
+        f"\nSummary: Processed {processed_count} folders, skipped {skipped_count} folders"
+    )
 
 
 if __name__ == "__main__":
