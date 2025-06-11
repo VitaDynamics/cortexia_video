@@ -1,0 +1,1 @@
+- This is a deeplearning project. So you do not need to prepare the env for it. Just read and modify the code is ok. Ignore test. You do not need to run any code on your light weight env. 
