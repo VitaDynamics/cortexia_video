@@ -18,8 +18,9 @@ def unzip_archives(source_dir: Path, target_dir: Path) -> None:
 
 def collect_images(root_dir: Path) -> list[Path]:
     """Recursively collect all JPG images from root_dir."""
-    images = list(root_dir.rglob("*.jpg"))
-    images += list(root_dir.rglob("*.jpeg"))
+    images = []
+    for pattern in ["*.jpg", "*.jpeg", "*.JPG", "*.JPEG"]:
+        images.extend(root_dir.rglob(pattern))
     return images
 
 
