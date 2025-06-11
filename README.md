@@ -48,8 +48,15 @@ The configuration option `processing.default_mode` controls the pipeline. Modes 
 Results are written to the directory specified by `processing.output_directory` in the configuration. When visualization is enabled, annotated frames are saved alongside JSON annotations.
 
 ## Project Structure
-- `cortexia_video/` – source package
-- `config/` – configuration samples
-- `data/` – sample data
-- `chores/` – utility scripts and tests
+- `cortexia_video/` - Main source package
+- `config/` - Configuration files
+- `docs/` - Project documentation
+- `scripts/` - Project scripts and utilities
 
+### Batch Depth Estimation Script
+Use `scripts/batch_depth_estimation.py` to extract images from zip archives and compute depth maps for each JPG image.
+
+Example:
+```bash
+python scripts/batch_depth_estimation.py --source-dir /path/to/zip_folder --target-dir /path/to/workdir
+```
