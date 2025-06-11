@@ -37,3 +37,11 @@ python main.py
 - `config/` - Configuration files
 - `docs/` - Project documentation
 - `scripts/` - Project scripts and utilities
+
+### Batch Depth Estimation Script
+Use `scripts/batch_depth_estimation.py` to extract images from zip archives and compute depth maps for each JPG image.
+
+Example:
+```bash
+python scripts/batch_depth_estimation.py --source-dir /path/to/zip_folder --target-dir /path/to/workdir
+```
