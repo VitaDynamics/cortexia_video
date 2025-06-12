@@ -1,39 +1,30 @@
 import argparse
 import sys
-import zipfile
 from pathlib import Path
 from typing import Any, List
 
 import numpy as np
+from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from batch_processor import BatchProcessor, collect_images_recursive
+from batch_processor import BatchProcessor, collect_images
 
 from cortexia_video.depth_estimation import DepthEstimator
 
-
-def unzip_archives(source_dir: Path, target_dir: Path, force: bool = False) -> None:
-    """Unzip all zip files from source_dir into subfolders of target_dir.
-
-    Args:
-        source_dir: Directory containing zip files
-        target_dir: Directory to extract archives to
-        force: If True, overwrite existing extracted folders
-    """
-    target_dir.mkdir(parents=True, exist_ok=True)
-    for zip_path in source_dir.glob("*.zip"):
-        dest = target_dir / zip_path.stem
-        if dest.exists() and not force:
-            print(f"Skipping {zip_path.name} - already extracted at {dest}")
-            continue
-
-        with zipfile.ZipFile(zip_path, "r") as archive:
-            dest.mkdir(parents=True, exist_ok=True)
-            archive.extractall(dest)
+# Global estimator instance to avoid reloading the model
+estimator = None
 
 
-def depth_inference_func(images: List, paths: List[Path]) -> List[Any]:
+def get_estimator() -> DepthEstimator:
+    """Get or create the depth estimator instance."""
+    global estimator
+    if estimator is None:
+        estimator = DepthEstimator()
+    return estimator
+
+
+def depth_inference_func(images: List[Image.Image], paths: List[Path]) -> List[Any]:
     """Inference function for depth estimation.
 
     Args:
@@ -43,11 +34,16 @@ def depth_inference_func(images: List, paths: List[Path]) -> List[Any]:
     Returns:
         List of depth estimation results
     """
-    # Convert paths to strings for the estimator
-    image_paths = [str(path) for path in paths]
-    estimator = DepthEstimator()
-    results = estimator.estimate_batch_depth(image_paths)
-    return results
+    try:
+        # Convert paths to strings for the estimator
+        image_paths = [str(path) for path in paths]
+        estimator = get_estimator()
+        results = estimator.estimate_batch_depth(image_paths)
+        return results
+    except Exception as e:
+        print(f"Error during depth estimation: {e}")
+        # Return empty results for each image in case of failure
+        return [{"depth": None, "focallength_px": None} for _ in paths]
 
 
 def depth_save_func(path: Path, result: Any) -> None:
@@ -57,58 +53,85 @@ def depth_save_func(path: Path, result: Any) -> None:
         path: Original image path
         result: Depth estimation result
     """
-    out_path = path.with_name(path.stem + "_depth.npy")
-    np.save(out_path, result["depth"])
-    print(f"Saved {out_path}")
+    try:
+        if result["depth"] is not None:
+            out_path = path.with_name(path.stem + "_depth_new.npy")
+            np.save(out_path, result["depth"])
+            print(f"Saved {out_path}")
+        else:
+            print(f"Skipped saving {path} due to estimation failure")
+    except Exception as e:
+        print(f"Error saving depth for {path}: {e}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Batch depth estimation for images")
     parser.add_argument(
-        "--source-dir",
+        "--folder",
         type=Path,
         required=True,
-        help="Directory containing zip files or images",
+        help="Folder to process",
     )
     parser.add_argument(
-        "--target-dir",
-        type=Path,
-        required=True,
-        help="Directory to extract archives and store results",
-    )
-    parser.add_argument(
-        "--force",
+        "--recursive",
         action="store_true",
-        help="Overwrite existing extracted folders",
+        help="Process subdirectories instead of the folder directly",
     )
     args = parser.parse_args()
 
-    unzip_archives(args.source_dir, args.target_dir, args.force)
-    images = collect_images_recursive(args.target_dir)
+    try:
+        if args.recursive:
+            # Original behavior: process subdirectories
+            subdirs_processed = 0
+            for sub in sorted(p for p in args.folder.iterdir() if p.is_dir()):
+                images = collect_images(sub)
+                if not images:
+                    print(f"No images found in {sub}, skipping...")
+                    continue
 
-    if not images:
-        print("No images found for depth estimation.")
-        return
+                print(f"Found {len(images)} images for processing in {sub}")
+                process_folder_images(images, f"subdirectory {sub.name}")
+                subdirs_processed += 1
 
-    print(f"Found {len(images)} images for processing")
+            if subdirs_processed == 0:
+                print(f"No subdirectories with images found in {args.folder}")
+        else:
+            # New behavior: process images directly in the specified folder
+            images = collect_images(args.folder)
+            if not images:
+                print(f"No images found in {args.folder}")
+                return
 
+            print(f"Found {len(images)} images for processing in {args.folder}")
+            process_folder_images(images, f"folder {args.folder.name}")
+
+        print("Batch processing completed!")
+
+    except Exception as e:
+        print(f"Error during batch processing: {e}")
+        raise
+
+
+def process_folder_images(images: List[Path], folder_description: str) -> None:
+    """Process images from a folder using BatchProcessor."""
     # Initialize batch processor
     processor = BatchProcessor(batch_size=4)
 
-    # Load images into buffer
-    print("Loading images into buffer...")
-    processor.load_images(images)
-    print(f"Loaded {len(processor)} images")
+    try:
+        # Load images into buffer
+        print("Loading images into buffer...")
+        processor.load_images(images)
+        print(f"Loaded {len(processor)} images")
 
-    # Process batch
-    print("Starting batch processing...")
-    processor.process_batch(
-        inference_func=depth_inference_func, save_func=depth_save_func
-    )
-
-    # Clean up
-    processor.clear_buffer()
-    print("Batch processing completed!")
+        # Process batch
+        print(f"Starting batch processing for {folder_description}...")
+        processor.process_batch(
+            inference_func=depth_inference_func, save_func=depth_save_func
+        )
+        print(f"Completed processing {folder_description}")
+    finally:
+        # Always clean up, even if an error occurs
+        processor.clear_buffer()
 
 
 if __name__ == "__main__":

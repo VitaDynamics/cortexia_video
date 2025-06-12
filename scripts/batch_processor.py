@@ -63,7 +63,10 @@ class BatchProcessor:
 
             try:
                 # Run inference on batch
+                print(f"Infering {len(batch_images)} images")
                 results = inference_func(batch_images, batch_paths)
+
+                print(f"Infered {len(results)} images")
 
                 # Save results for each image
                 for path, result in zip(batch_paths, results):

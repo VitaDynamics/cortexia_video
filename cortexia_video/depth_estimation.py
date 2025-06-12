@@ -132,4 +132,4 @@ class DepthEstimator(BaseDepthEstimator):
                 }
             )
 
-            return results
+        return results
