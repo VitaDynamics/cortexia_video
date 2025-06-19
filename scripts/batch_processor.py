@@ -95,9 +95,8 @@ class BatchProcessor:
         """Return number of loaded images."""
         return len(self.path_to_image)
 
-
 def collect_images(folder: Path) -> List[Path]:
-    """Collect JPG/JPEG images from a folder.
+    """Collect JPG/JPEG/PNG images from a folder.
 
     Args:
         folder: Folder to search for images
@@ -105,7 +104,7 @@ def collect_images(folder: Path) -> List[Path]:
     Returns:
         List of image file paths
     """
-    patterns = ["*.jpg", "*.jpeg", "*.JPG", "*.JPEG"]
+    patterns = ["*.jpg", "*.jpeg", "*.JPG", "*.JPEG", "*.png", "*.PNG"]
     images = []
     for pattern in patterns:
         images.extend(folder.glob(pattern))
@@ -113,7 +112,7 @@ def collect_images(folder: Path) -> List[Path]:
 
 
 def collect_images_recursive(root_dir: Path) -> List[Path]:
-    """Recursively collect all JPG images from root_dir.
+    """Recursively collect all JPG/PNG images from root_dir.
 
     Args:
         root_dir: Root directory to search recursively
@@ -122,6 +121,6 @@ def collect_images_recursive(root_dir: Path) -> List[Path]:
         List of image file paths
     """
     images = []
-    for pattern in ["*.jpg", "*.jpeg", "*.JPG", "*.JPEG"]:
+    for pattern in ["*.jpg", "*.jpeg", "*.JPG", "*.JPEG", "*.png", "*.PNG"]:
         images.extend(root_dir.rglob(pattern))
     return sorted(images)
