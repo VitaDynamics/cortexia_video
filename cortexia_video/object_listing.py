@@ -105,6 +105,7 @@ class Qwen2_5VLLister(ObjectLister):
     def __init__(self, config_manager):
         super().__init__(config_manager)
         model_name = config_manager.get_param("model_settings.object_listing_model")
+        self.task_prompt = config_manager.get_param("object_listing_settings.task_prompt")
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_name, torch_dtype=torch.bfloat16, device_map="cuda:0"
         )
@@ -113,10 +114,8 @@ class Qwen2_5VLLister(ObjectLister):
     def list_objects_in_image(self, image_data: Any) -> List[str]:
         if isinstance(image_data, np.ndarray):
             image_data = Image.fromarray(image_data)
-        prompt = (
-            "Analyze the following image and list the labels of objects in the image. "
-            "Provide the output as a list of strings, where each string in the array is the label of a object. Any label is acceptable."
-        )
+        format_prompt = "Provide the output as a list of strings, where each string in the array is the label of a object."
+        prompt = f"{self.task_prompt} {format_prompt}"
         messages = [
             {
                 "role": "user",
@@ -178,10 +177,8 @@ class Qwen2_5VLLister(ObjectLister):
         """
         if isinstance(images_batch[0], np.ndarray):
             images_batch = [Image.fromarray(image) for image in images_batch]
-        prompt = (
-            "Analyze the following image and list the labels of objects in the image. "
-            "Provide the output as a list of strings, where each string in the array is the label of a object. Any label is acceptable."
-        )
+        format_prompt = "Provide the output as a list of strings, where each string in the array is the label of a object."
+        prompt = f"{self.task_prompt} {format_prompt}"
         texts = []
         for image_data in images_batch:
             message = [{
