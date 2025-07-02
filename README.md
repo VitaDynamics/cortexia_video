@@ -15,6 +15,7 @@ This repository provides a complete workflow for processing image datasets throu
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Running with Docker](#running-with-docker)
 - [Detailed Usage](#detailed-usage)
   - [Stage 1: Image Tagging](#stage-1-image-tagging)
   - [Stage 2: Object Detection & Segmentation](#stage-2-object-detection--segmentation)
@@ -86,6 +87,29 @@ python scripts/detect_segment_images.py --folder /path/to/your/dataset --config 
 # 3. Generate depth maps
 python scripts/batch_depth_estimation.py --folder /path/to/your/dataset --recursive
 ```
+
+## Running with Docker
+
+You can also execute the pipeline inside a Docker container.
+
+### Build the Docker image
+
+```bash
+docker build -t cortexia-video .
+```
+
+### Run the container
+
+Mount a local folder containing your videos (e.g. `/path/to/your/dataset`) and
+run any of the processing scripts inside the container:
+
+```bash
+docker run --gpus all -v /path/to/your/dataset:/data cortexia-video \
+    python scripts/tag_images.py --folder /data --config config/heavy_mode.toml
+```
+
+The required models will be downloaded at runtime as described in the
+[Prerequisites](#prerequisites).
 
 ## Detailed Usage
 
