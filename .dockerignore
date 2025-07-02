@@ -21,7 +21,7 @@ ml-depth-pro/data/
 chores/
 
 # Python cache and virtual environments
-__pycache__/
+**/__pycache__/
 *.py[cod]
 .venv/
 venv/
