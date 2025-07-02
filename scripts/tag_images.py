@@ -2,47 +2,19 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any, List
+import os
 
+import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from batch_processor import collect_images
+from batch_processor import BatchProcessor, collect_images
 
 from cortexia_video.config_manager import ConfigManager
+from cortexia_video.parser import parse_comma_separated_string
 
-DRIVABLE_KEYWORDS = [
-    "road",
-    "street",
-    "lane",
-    "highway",
-    "sidewalk",
-    "path",
-    "trail",
-    "stairs",
-    "staircase",
-    "stairway",
-    "elevator",
-    "escalator",
-    "turnstile",
-    "parking",
-    "driveway",
-    "ramp",
-    "bridge",
-    "tunnel",
-    "floor",
-    "pavement",
-    "ground",
-    "passage",
-    "corridor",
-    "hallway",
-]
-
-TASK_PROMPT = f"""Identify and list all objects in this image that represent passable areas or surfaces where a person, vehicle, or entity could travel, walk, or move through. Focus on identifying any areas that allow movement or transportation.
-
-Examples of passable areas to look for include (but are not limited to): {", ".join(DRIVABLE_KEYWORDS)}.
-
-Please list all visible passable areas, surfaces, and pathways in the image, even if they are partially visible or in the background. Be comprehensive and include any area that could be used for movement or transportation."""
 
 
 # collect_images is now imported from batch_processor
@@ -127,7 +99,32 @@ def main() -> None:
         default=5,
         help="Minimum number of JPEG images required for a folder to be considered a video folder",
     )
+    
+    parser.add_argument(
+        "--drivable-keywords",
+        type=str,
+        default="",
+        help="Comma-separated list of drivable area keywords to use for tagging",
+    )
+    
     args = parser.parse_args()
+
+    DRIVABLE_KEYWORDS = [
+        "road",
+        "street",
+    ]
+
+    TASK_PROMPT = f"""Identify and list all objects in this image that represent passable areas or surfaces where a person, vehicle, or entity could travel, walk, or move through. Focus on identifying any areas that allow movement or transportation.
+
+    Examples of passable areas to look for include (but are not limited to): {", ".join(DRIVABLE_KEYWORDS)}.
+
+    Please list all visible passable areas, surfaces, and pathways in the image, even if they are partially visible or in the background. Be comprehensive and include any area that could be used for movement or transportation."""
+
+    # merge drivable keywords
+    DRIVABLE_KEYWORDS.extend(parse_comma_separated_string(args.drivable_keywords))
+    
+    # print current config for accessible area
+    print(f"Current drivable area keywords: {DRIVABLE_KEYWORDS}, you can add more with --drivable-keywords")
 
     cfg = ConfigManager(config_file_path=str(args.config))
     cfg.load_config()

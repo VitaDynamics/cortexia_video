@@ -50,7 +50,7 @@ source_dir/
 └── dataset.zip
 
 # Command: python scripts/batch_depth_estimation.py --source-dir source_dir --target-dir output_depth
-# (Assuming DepthEstimator is available and configured)
+# (Assuming DepthProEstimator is available and configured)
 
 output_depth/
 └── dataset/

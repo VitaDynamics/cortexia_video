@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from batch_processor import BatchProcessor, collect_images_recursive
-from cortexia_video.depth_estimation import DepthEstimator
+from cortexia_video.depth_estimation import DepthProEstimator
 
 
 def depth_inference_func(images: List, paths: List[Path]) -> List[Any]:
@@ -28,7 +28,7 @@ def depth_inference_func(images: List, paths: List[Path]) -> List[Any]:
     """
     # Convert PIL images to path strings for the estimator
     image_paths = [str(path) for path in paths]
-    estimator = DepthEstimator()
+    estimator = DepthProEstimator()
     results = estimator.estimate_batch_depth(image_paths)
     return results
 

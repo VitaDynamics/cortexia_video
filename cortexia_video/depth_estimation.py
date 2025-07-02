@@ -23,7 +23,7 @@ class BaseDepthEstimator(ABC):
         pass
 
 
-class DepthEstimator(BaseDepthEstimator):
+class DepthProEstimator(BaseDepthEstimator):
     def __init__(self):
         """Initialize the depth estimator with model and transform."""
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

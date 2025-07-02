@@ -10,17 +10,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from batch_processor import BatchProcessor, collect_images
 
-from cortexia_video.depth_estimation import DepthEstimator
+from cortexia_video.depth_estimation import DepthProEstimator
 
 # Global estimator instance to avoid reloading the model
 estimator = None
 
 
-def get_estimator() -> DepthEstimator:
+def get_estimator() -> DepthProEstimator:
     """Get or create the depth estimator instance."""
     global estimator
     if estimator is None:
-        estimator = DepthEstimator()
+        estimator = DepthProEstimator()
     return estimator
 
 
