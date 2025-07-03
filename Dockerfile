@@ -12,7 +12,11 @@ WORKDIR /app
 COPY pyproject.toml setup.py uv.lock ./
 COPY cortexia_video ./cortexia_video
 
-RUN uv pip install --no-cache-dir -e .
+RUN cd ./cortexia_video 
+
+RUN uv venv --system --python 3.11
+
+RUN uv pip install -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple --no-cache-dir -e .
 
 COPY config ./config
 
