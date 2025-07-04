@@ -59,9 +59,7 @@ cd cortexia_video
 pip install -e .
 
 # Or using uv (recommended)
-uv venv .venv
-source .venv/bin/activate
-uv pip install -r uv.lock
+uv sync
 ```
 
 ### 3. Download Required Models
