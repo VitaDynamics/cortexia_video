@@ -10,6 +10,16 @@ This repository provides a complete workflow for processing image datasets throu
 2. **Object Detection & Segmentation** (`detect_segment_images.py`) - Detects and segments tagged objects using state-of-the-art models
 3. **Depth Estimation** (`batch_depth_estimation.py`) - Generates depth maps for processed images
 
+### Pipeline Diagram
+
+```mermaid
+graph TD
+    A[Dataset] --> B[tag_images.py<br/>Image Tagging]
+    B --> C[detect_segment_images.py<br/>Detection & Segmentation]
+    C --> D[batch_depth_estimation.py<br/>Depth Estimation]
+    D --> E[Processed Data]
+```
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
