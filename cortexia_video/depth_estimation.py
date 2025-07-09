@@ -2,7 +2,10 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
-import depth_pro
+from transformers import (
+    DepthProImageProcessorFast,
+    DepthProForDepthEstimation,
+)
 import torch
 from PIL import Image
 
@@ -27,7 +30,9 @@ class DepthProEstimator(BaseDepthEstimator):
     def __init__(self):
         """Initialize the depth estimator with model and transform."""
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model, self.transform = depth_pro.create_model_and_transforms()
+        model_name = "apple/DepthPro-hf"
+        self.processor = DepthProImageProcessorFast.from_pretrained(model_name)
+        self.model = DepthProForDepthEstimation.from_pretrained(model_name)
         self.model.to(self.device)
         self.model.eval()
 
@@ -43,8 +48,8 @@ class DepthProEstimator(BaseDepthEstimator):
             Tuple of (PIL Image, focal length in pixels or None)
         """
         try:
-            img, _, f_px = depth_pro.load_rgb(image_path)
-            return img, f_px
+            img = Image.open(image_path)
+            return img, None
 
         except Exception as e:
             raise RuntimeError(f"Error loading image {image_path}: {str(e)}")
@@ -63,73 +68,30 @@ class DepthProEstimator(BaseDepthEstimator):
         if not inputs:
             return []
 
-        # Detect input type by checking the first element
         is_path_input = isinstance(inputs[0], (str, Path))
 
-        # Lists to store processed images and their focal lengths
-        processed_images = []
-        focal_lengths = []
+        images = []
+        target_sizes = []
+        for item in inputs:
+            if is_path_input:
+                img, _ = self._load_image(item)
+            else:
+                img = item
+            images.append(img)
+            target_sizes.append((img.height, img.width))
 
-        if is_path_input:
-            # Handle list of file paths
-            for image_path in inputs:
-                # Load image and get focal length
-                img, f_px = self._load_image(image_path)
+        model_inputs = self.processor(images=images, return_tensors="pt").to(self.device)
 
-                # Apply transform
-                processed_img = self.transform(img)
-
-                processed_images.append(processed_img)
-                focal_lengths.append(f_px)
-        else:
-            # Handle list of PIL Images
-            for img in inputs:
-                # Apply transform to the PIL image
-                processed_img = self.transform(img)
-                processed_images.append(processed_img)
-                # No focal length info available from PIL images
-                focal_lengths.append(None)
-
-        # Stack images into a batch
-        batch_images = torch.stack(processed_images)
-
-        # Prepare focal lengths tensor if any focal lengths are available
-        batch_f_px = None
-        if any(f is not None for f in focal_lengths):
-            batch_f_px = torch.tensor(
-                [f if f is not None else 0.0 for f in focal_lengths],
-                dtype=torch.float32,
-            )
-
-        # Run inference
         with torch.no_grad():
-            # Move batch to device
-            batch_images = batch_images.to(self.device)
-            if batch_f_px is not None:
-                batch_f_px = batch_f_px.to(self.device)
+            outputs = self.model(**model_inputs)
 
-            predictions = self.model.infer(batch_images, f_px=batch_f_px)
+        post_processed = self.processor.post_process_depth_estimation(
+            outputs, target_sizes=target_sizes
+        )
 
-        # Process results
         results = []
-        depths = predictions["depth"]  # Should be a batch of depth maps
-        pred_focal_lengths = predictions[
-            "focallength_px"
-        ]  # Should be a batch of focal lengths
-
-        # Convert predictions to numpy if they're on GPU
-        if isinstance(depths, torch.Tensor):
-            depths = depths.cpu().numpy()
-        if isinstance(pred_focal_lengths, torch.Tensor):
-            pred_focal_lengths = pred_focal_lengths.cpu().numpy()
-
-        # Create result dictionaries
-        for i in range(len(inputs)):
-            results.append(
-                {
-                    "depth": depths[i],  # Individual depth map
-                    "focallength_px": pred_focal_lengths[i],  # Individual focal length
-                }
-            )
+        for out in post_processed:
+            depth_array = out["predicted_depth"].detach().cpu().numpy()
+            results.append({"depth": depth_array, "focallength_px": out["focal_length"]})
 
         return results
