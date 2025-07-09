@@ -30,8 +30,9 @@ class DepthProEstimator(BaseDepthEstimator):
     def __init__(self):
         """Initialize the depth estimator with model and transform."""
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.processor = DepthProImageProcessorFast.from_pretrained("apple/DepthPro-hf")
-        self.model = DepthProForDepthEstimation.from_pretrained("apple/DepthPro-hf")
+        model_name = "apple/DepthPro-hf"
+        self.processor = DepthProImageProcessorFast.from_pretrained(model_name)
+        self.model = DepthProForDepthEstimation.from_pretrained(model_name)
         self.model.to(self.device)
         self.model.eval()
 
