@@ -33,13 +33,15 @@ scripts/batch_depth_estimation.py
 ### Basic Syntax
 
 ```bash
-python scripts/batch_depth_estimation.py --folder <path_to_folder> [--recursive]
+python scripts/batch_depth_estimation.py --folder <path_to_folder> [--recursive] [--save_format <format>] [--batch_size <size>]
 ```
 
 ### Arguments
 
 - `--folder` (required): Path to the folder containing images to process
 - `--recursive` (optional): Process subdirectories instead of the folder directly
+- `--save_format` (optional): Format to save the depth map. Choices are `npy` (default) or `png`.
+- `--batch_size` (optional): Number of images to process in a batch. Default is 4. Consider your system's memory (especially GPU memory if available) when changing this.
 
 ### Processing Modes
 
@@ -53,8 +55,8 @@ python scripts/batch_depth_estimation.py --folder /path/to/images
 
 This will:
 - Find all images (JPG, JPEG, PNG) in the specified folder
-- Process them in batches of 4 images
-- Save depth maps as `<original_name>_depth_new.npy` files
+- Process them in batches (default size 4, configurable with `--batch_size`)
+- Save depth maps as `<original_name>_depth_new.npy` files (or `.png` if `--save_format png` is used)
 
 #### 2. Recursive Subdirectory Processing
 
@@ -72,15 +74,25 @@ This will:
 ## Output
 
 For each successfully processed image, the script generates:
-- A depth map saved as `<original_filename>_depth_new.npy`
+- A depth map saved as `<original_filename>_depth_new.npy` (default) or `<original_filename>_depth_new.png` (if `--save_format png` is specified).
 - Console output showing processing progress
 
 ### Output Format
+
+**NPY (default):**
 
 The depth maps are saved as NumPy arrays (.npy files) containing:
 - **Shape**: Same height and width as the input image
 - **Data Type**: Float32
 - **Values**: Depth values in meters (or model-specific units)
+
+**PNG (optional):**
+
+If `--save_format png` is used, the depth maps are saved as PNG image files:
+- **Format**: Grayscale PNG
+- **Shape**: Same height and width as the input image
+- **Data Type**: Unsigned 8-bit integer (0-255)
+- **Values**: Normalized depth values. Closer objects will appear darker, and farther objects will appear lighter. The normalization is performed per-image.
 
 ## Examples
 
@@ -101,6 +113,21 @@ python scripts/batch_depth_estimation.py --folder ./photos
 # Saved ./photos/image1_depth_new.npy
 # Saved ./photos/image2_depth_new.npy
 # ...
+
+# Process all images in 'photos' directory and save as PNG
+python scripts/batch_depth_estimation.py --folder ./photos --save_format png
+
+# Expected output:
+# Found 15 images for processing in photos
+# Loading images into buffer...
+# Loaded 15 images
+# Starting batch processing for folder photos...
+# Processing batch 1/4
+# Infering 4 images
+# Infered 4 images
+# Saved ./photos/image1_depth_new.png
+# Saved ./photos/image2_depth_new.png
+# ...
 ```
 
 ### Example 2: Process Multiple Video Folders
@@ -118,16 +145,6 @@ python scripts/batch_depth_estimation.py --folder ./video_dataset --recursive
 ```
 
 ## Configuration
-
-### Batch Size
-
-The script uses a default batch size of 4 images. This is configured in the `process_folder_images()` function:
-
-```python
-processor = BatchProcessor(batch_size=4)
-```
-
-To modify the batch size, edit line 118 in the script. Consider your GPU memory when adjusting this value.
 
 ### Supported Image Formats
 

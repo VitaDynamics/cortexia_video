@@ -14,6 +14,8 @@ from cortexia_video.depth_estimation import DepthProEstimator
 
 # Global estimator instance to avoid reloading the model
 estimator = None
+# Global save format
+G_SAVE_FORMAT = "npy"
 
 
 def get_estimator() -> DepthProEstimator:
@@ -55,9 +57,25 @@ def depth_save_func(path: Path, result: Any) -> None:
     """
     try:
         if result["depth"] is not None:
-            out_path = path.with_name(path.stem + "_depth_new.npy")
-            np.save(out_path, result["depth"])
-            print(f"Saved {out_path}")
+            depth_array = result["depth"]
+            if G_SAVE_FORMAT == "npy":
+                out_path = path.with_name(path.stem + "_depth_new.npy")
+                np.save(out_path, depth_array)
+                print(f"Saved {out_path}")
+            elif G_SAVE_FORMAT == "png":
+                out_path = path.with_name(path.stem + "_depth_new.png")
+                # Normalize depth map to 0-255 and convert to uint8
+                depth_normalized = (
+                    255.0
+                    * (depth_array - np.min(depth_array))
+                    / (np.max(depth_array) - np.min(depth_array) + 1e-6)
+                )
+                depth_uint8 = depth_normalized.astype(np.uint8)
+                img_pil = Image.fromarray(depth_uint8)
+                img_pil.save(out_path)
+                print(f"Saved {out_path}")
+            else:
+                print(f"Unsupported save format: {G_SAVE_FORMAT}")
         else:
             print(f"Skipped saving {path} due to estimation failure")
     except Exception as e:
@@ -77,7 +95,23 @@ def main() -> None:
         action="store_true",
         help="Process subdirectories instead of the folder directly",
     )
+    parser.add_argument(
+        "--save_format",
+        type=str,
+        default="npy",
+        choices=["npy", "png"],
+        help="Format to save the depth map (npy or png). Default is npy.",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=4,
+        help="Number of images to process in a batch. Default is 4.",
+    )
     args = parser.parse_args()
+
+    global G_SAVE_FORMAT
+    G_SAVE_FORMAT = args.save_format
 
     try:
         if args.recursive:
@@ -90,7 +124,7 @@ def main() -> None:
                     continue
 
                 print(f"Found {len(images)} images for processing in {sub}")
-                process_folder_images(images, f"subdirectory {sub.name}")
+                process_folder_images(images, f"subdirectory {sub.name}", args.batch_size)
                 subdirs_processed += 1
 
             if subdirs_processed == 0:
@@ -103,7 +137,7 @@ def main() -> None:
                 return
 
             print(f"Found {len(images)} images for processing in {args.folder}")
-            process_folder_images(images, f"folder {args.folder.name}")
+            process_folder_images(images, f"folder {args.folder.name}", args.batch_size)
 
         print("Batch processing completed!")
 
@@ -112,10 +146,10 @@ def main() -> None:
         raise
 
 
-def process_folder_images(images: List[Path], folder_description: str) -> None:
+def process_folder_images(images: List[Path], folder_description: str, batch_size: int) -> None:
     """Process images from a folder using BatchProcessor."""
     # Initialize batch processor
-    processor = BatchProcessor(batch_size=4)
+    processor = BatchProcessor(batch_size=batch_size)
 
     try:
         # Load images into buffer
