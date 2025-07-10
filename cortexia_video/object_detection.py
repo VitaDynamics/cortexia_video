@@ -16,7 +16,7 @@ class ObjectDetector:
             config_manager: ConfigManager instance with model settings
         """
         self.config = config_manager
-        self.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         # Initialize grounding dino model
         model_name = self.config.get_param("model_settings.object_detection_model", 
