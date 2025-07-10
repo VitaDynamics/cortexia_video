@@ -1,4 +1,5 @@
 import argparse
+import functools
 import sys
 from pathlib import Path
 from typing import Any, List
@@ -14,8 +15,6 @@ from cortexia_video.depth_estimation import DepthProEstimator
 
 # Global estimator instance to avoid reloading the model
 estimator = None
-# Global save format
-G_SAVE_FORMAT = "npy"
 
 
 def get_estimator() -> DepthProEstimator:
@@ -48,21 +47,22 @@ def depth_inference_func(images: List[Image.Image], paths: List[Path]) -> List[A
         return [{"depth": None, "focallength_px": None} for _ in paths]
 
 
-def depth_save_func(path: Path, result: Any) -> None:
+def depth_save_func(path: Path, result: Any, save_format: str) -> None:
     """Save function for depth estimation results.
 
     Args:
         path: Original image path
         result: Depth estimation result
+        save_format: Format to save the depth map ('npy' or 'png')
     """
     try:
         if result["depth"] is not None:
             depth_array = result["depth"]
-            if G_SAVE_FORMAT == "npy":
+            if save_format == "npy":
                 out_path = path.with_name(path.stem + "_depth_new.npy")
                 np.save(out_path, depth_array)
                 print(f"Saved {out_path}")
-            elif G_SAVE_FORMAT == "png":
+            elif save_format == "png":
                 out_path = path.with_name(path.stem + "_depth_new.png")
                 # Normalize depth map to 0-255 and convert to uint8
                 depth_normalized = (
@@ -75,7 +75,7 @@ def depth_save_func(path: Path, result: Any) -> None:
                 img_pil.save(out_path)
                 print(f"Saved {out_path}")
             else:
-                print(f"Unsupported save format: {G_SAVE_FORMAT}")
+                print(f"Unsupported save format: {save_format}")
         else:
             print(f"Skipped saving {path} due to estimation failure")
     except Exception as e:
@@ -110,9 +110,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    global G_SAVE_FORMAT
-    G_SAVE_FORMAT = args.save_format
-
     try:
         if args.recursive:
             # Original behavior: process subdirectories
@@ -124,7 +121,12 @@ def main() -> None:
                     continue
 
                 print(f"Found {len(images)} images for processing in {sub}")
-                process_folder_images(images, f"subdirectory {sub.name}", args.batch_size)
+                process_folder_images(
+                    images,
+                    f"subdirectory {sub.name}",
+                    args.batch_size,
+                    args.save_format,
+                )
                 subdirs_processed += 1
 
             if subdirs_processed == 0:
@@ -137,7 +139,9 @@ def main() -> None:
                 return
 
             print(f"Found {len(images)} images for processing in {args.folder}")
-            process_folder_images(images, f"folder {args.folder.name}", args.batch_size)
+            process_folder_images(
+                images, f"folder {args.folder.name}", args.batch_size, args.save_format
+            )
 
         print("Batch processing completed!")
 
@@ -146,10 +150,15 @@ def main() -> None:
         raise
 
 
-def process_folder_images(images: List[Path], folder_description: str, batch_size: int) -> None:
+def process_folder_images(
+    images: List[Path], folder_description: str, batch_size: int, save_format: str
+) -> None:
     """Process images from a folder using BatchProcessor."""
     # Initialize batch processor
     processor = BatchProcessor(batch_size=batch_size)
+
+    # Create a save function with the save_format argument pre-filled
+    bound_save_func = functools.partial(depth_save_func, save_format=save_format)
 
     try:
         # Load images into buffer
@@ -160,7 +169,7 @@ def process_folder_images(images: List[Path], folder_description: str, batch_siz
         # Process batch
         print(f"Starting batch processing for {folder_description}...")
         processor.process_batch(
-            inference_func=depth_inference_func, save_func=depth_save_func
+            inference_func=depth_inference_func, save_func=bound_save_func
         )
         print(f"Completed processing {folder_description}")
     finally:
