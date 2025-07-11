@@ -23,7 +23,7 @@ class ObjectSegmenter:
         self.model = None
         self.processor = None
         # Support different devices for different model and processor
-        self.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.logger = logging.getLogger(__name__)
         self._load_model()
 
