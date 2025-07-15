@@ -31,7 +31,7 @@ class MoonDreamCaptioner(ImageCaptioner):
             model_name,
             revision=revision,
             trust_remote_code=True,
-            device_map={"": "cuda"},
+            device_map="auto",
         )
 
     def caption_image(self, image_data: Any) -> str:
