@@ -182,12 +182,13 @@ dataset/
 **Example tag file** (`frame_001_tag.json`):
 ```json
 {
-  "tags": [
-    "road",
-    "lane marking",
-    "sidewalk",
-    "building"
-  ]
+  "tags": ["road", "sidewalk", "vehicle", "lane marking"],
+  "category_map": {
+    "road": "accessible_area",
+    "sidewalk": "accessible_area",
+    "vehicle": "traffic_participants",
+    "lane marking": "environmental_markers"
+  }
 }
 ```
 
@@ -252,6 +253,10 @@ dataset/
 ```json
 {
   "tags": ["road", "vehicle"],
+  "category_map": {
+    "road": "accessible_area",
+    "vehicle": "traffic_participants"
+  },
   "objects": [
     {
       "id": "uuid-1234-5678",
@@ -373,7 +378,11 @@ python scripts/tag_images.py --folder /path/to/dataset --config config/my_config
 **Tag JSON Structure**:
 ```json
 {
-  "tags": ["road", "vehicle", "building"],
+  "tags": ["road", "vehicle"],
+  "category_map": {
+    "road": "accessible_area",
+    "vehicle": "traffic_participants"
+  },
   "objects": [
     {
       "id": "uuid-string",
@@ -439,7 +448,13 @@ nano /path/to/dataset/video1/frame_001_tag.json
 
 # Example manual tag file:
 {
-  "tags": ["car", "road", "traffic_light", "pedestrian"]
+  "tags": ["road", "car", "pedestrian", "traffic_light"],
+  "category_map": {
+    "road": "accessible_area",
+    "car": "traffic_participants",
+    "pedestrian": "traffic_participants",
+    "traffic_light": "environmental_markers"
+  }
 }
 ```
 

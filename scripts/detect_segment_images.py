@@ -61,24 +61,31 @@ def load_tags(tag_file: Path) -> List[str]:
     with open(tag_file, "r") as f:
         data = json.load(f)
 
+    # New mapping structure
+    if "category_map" in data:
+        mapping = data.get("category_map", {})
+        return list(mapping.keys())
+
     raw_tags = data.get("tags", [])
     if not raw_tags:
         return []
 
-    # Handle different tag formats
     all_tags = []
-    for tag_item in raw_tags:
-        if isinstance(tag_item, str):
-            # Check if it's a multi-line string with '- ' prefixes
-            if "\n" in tag_item and "- " in tag_item:
-                parsed_tags = parse_tags_string(tag_item)
-                all_tags.extend(parsed_tags)
-            else:
-                # Single tag string
-                all_tags.append(tag_item.strip())
-        elif isinstance(tag_item, list):
-            # Already a list of tags
-            all_tags.extend(tag_item)
+    # Old categorized dict format
+    if isinstance(raw_tags, dict):
+        for tag_list in raw_tags.values():
+            if isinstance(tag_list, list):
+                all_tags.extend(tag_list)
+    else:
+        for tag_item in raw_tags:
+            if isinstance(tag_item, str):
+                if "\n" in tag_item and "- " in tag_item:
+                    parsed_tags = parse_tags_string(tag_item)
+                    all_tags.extend(parsed_tags)
+                else:
+                    all_tags.append(tag_item.strip())
+            elif isinstance(tag_item, list):
+                all_tags.extend(tag_item)
 
     return all_tags
 
@@ -159,8 +166,14 @@ def detect_segment_save_func(path: Path, result: Any) -> None:
     detections = result["detections"]
     masks = result["masks"]
 
-    # Load original tags
+    # Load original tags and category mapping
+    original_data = {}
+    if tag_file.exists():
+        with open(tag_file, "r") as f:
+            original_data = json.load(f)
+
     tags = load_tags(tag_file)
+    category_map = original_data.get("category_map")
 
     obj_entries = []
     masks_dict = {}
@@ -178,6 +191,8 @@ def detect_segment_save_func(path: Path, result: Any) -> None:
 
     # Save updated json
     out_data = {"tags": tags, "objects": obj_entries}
+    if category_map is not None:
+        out_data["category_map"] = category_map
     with open(tag_file, "w") as f:
         json.dump(out_data, f, indent=2)
 

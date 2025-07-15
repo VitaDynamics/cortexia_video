@@ -2,7 +2,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Dict
 import os
 
 import numpy as np
@@ -41,6 +41,65 @@ def tagging_inference_func(
     return results
 
 
+# Mapping of keywords to their high level categories
+CATEGORY_KEYWORDS: Dict[str, set[str]] = {
+    "accessible_area": {
+        "road",
+        "street",
+        "sidewalk",
+        "path",
+        "trail",
+        "lane",
+        "bridge",
+        "crosswalk",
+    },
+    "traffic_participants": {
+        "car",
+        "vehicle",
+        "bus",
+        "truck",
+        "motorcycle",
+        "bicycle",
+        "bike",
+        "pedestrian",
+        "person",
+        "cyclist",
+    },
+    "environmental_markers": {
+        "traffic light",
+        "traffic sign",
+        "lane marking",
+        "stop sign",
+        "road sign",
+        "traffic cone",
+    },
+    "light_weather_conditions": {
+        "sunny",
+        "rain",
+        "snow",
+        "fog",
+        "cloudy",
+        "overcast",
+        "night",
+        "daytime",
+    },
+}
+
+
+def categorize_tags(tags: List[str]) -> Dict[str, str]:
+    """Map each tag to its high level category."""
+    mapping: Dict[str, str] = {}
+    for tag in tags:
+        tag_lower = tag.lower()
+        category = "other"
+        for cat, keywords in CATEGORY_KEYWORDS.items():
+            if tag_lower in keywords:
+                category = cat
+                break
+        mapping[tag] = category
+    return mapping
+
+
 def tagging_save_func(path: Path, result: Any) -> None:
     """Save function for tagging results.
 
@@ -48,9 +107,10 @@ def tagging_save_func(path: Path, result: Any) -> None:
         path: Original image path
         result: Tagging result (list of tags)
     """
+    mapping = categorize_tags(result)
     out_path = path.with_name(f"{path.stem}_tag.json")
     with open(out_path, "w") as f:
-        json.dump({"tags": result}, f, indent=2)
+        json.dump({"tags": result, "category_map": mapping}, f, indent=2)
     print(f"Saved tags for {path} -> {out_path}")
 
 

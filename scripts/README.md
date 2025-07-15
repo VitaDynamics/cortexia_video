@@ -104,15 +104,16 @@ This script is used to automatically generate initial descriptive tags for image
 **Output:**
 
 *   For each processed image (e.g., `imagename.jpg`), a JSON file named `imagename_tag.json` is created in the same subfolder.
-*   This JSON file contains a "tags" key, with its value being a list of strings representing the identified objects or areas (e.g., `["road", "sidewalk"]`).
+*   This JSON file contains a list of tags and a mapping from each tag to its high-level category.
 *   Example `imagename_tag.json`:
     ```json
     {
-      "tags": [
-        "road",
-        "lane marking",
-        "building"
-      ]
+      "tags": ["road", "car", "lane marking"],
+      "category_map": {
+        "road": "accessible_area",
+        "car": "traffic_participants",
+        "lane marking": "environmental_markers"
+      }
     }
     ```
 
@@ -145,22 +146,24 @@ Manual tagging is the process where a user directly creates or modifies the `_ta
 **Process:**
 
 1.  **Create or Edit `_tag.json` files:** For an image `imagename.jpg`, create a corresponding `imagename_tag.json` file in the same directory.
-2.  **Specify Tags:** The JSON file must contain a "tags" key, whose value is a list of strings. Each string is a tag relevant to the image content you want to focus on for detection.
+2.  **Specify Tags:** The JSON file must contain a list of tags and an optional mapping from each tag to a high-level category used for detection.
 
 **Format of `imagename_tag.json` for Manual Input:**
 
 ```json
 {
-  "tags": [
-    "specific object 1",
-    "another area of interest",
-    "desired_tag"
-  ]
+  "tags": ["road", "pedestrian", "traffic light", "rain"],
+  "category_map": {
+    "road": "accessible_area",
+    "pedestrian": "traffic_participants",
+    "traffic light": "environmental_markers",
+    "rain": "light_weather_conditions"
+  }
 }
 ```
 
 *   The `tag_images.py` script automatically generates tags with a focus on passable areas. If your focus is different, or if you need to correct/add tags, manual editing is necessary.
-*   The `detect_segment_images.py` script (detailed next) uses these tags to know what objects to look for. If an image has no `_tag.json` file or the "tags" list is empty, it will likely be skipped by the detection/segmentation script.
+*   The `detect_segment_images.py` script (detailed next) uses these tags to know what objects to look for. If an image has no `_tag.json` file or the tag list is empty, it will likely be skipped by the detection/segmentation script.
 
 **Example:**
 
@@ -169,7 +172,11 @@ If you have `video_frames/my_image.jpg` and you want to detect "car" and "tree":
 Create `video_frames/my_image_tag.json` with the following content:
 ```json
 {
-  "tags": ["car", "tree"]
+  "tags": ["car", "tree"],
+  "category_map": {
+    "car": "traffic_participants",
+    "tree": "other"
+  }
 }
 ```
 This manually created file will then be used by `detect_segment_images.py`.
@@ -192,7 +199,11 @@ This script performs object detection and segmentation on images based on pre-ex
     *   Example `imagename_tag.json` (input):
         ```json
         {
-          "tags": ["road", "vehicle"]
+          "tags": ["road", "vehicle"],
+          "category_map": {
+            "road": "accessible_area",
+            "vehicle": "traffic_participants"
+          }
         }
         ```
 
@@ -207,6 +218,10 @@ This script performs object detection and segmentation on images based on pre-ex
         ```json
         {
           "tags": ["road", "vehicle"],
+          "category_map": {
+            "road": "accessible_area",
+            "vehicle": "traffic_participants"
+          },
           "objects": [
             {
               "id": "some-uuid-1234",
@@ -228,9 +243,9 @@ Given the input structure:
 my_dataset/
 └── sequence1/
     ├── img_001.jpg
-    ├── img_001_tag.json  # Containing {"tags": ["car"]}
+    ├── img_001_tag.json  # Containing {"tags": ["car"], "category_map": {"car": "traffic_participants"}}
     └── img_002.jpg
-        └── img_002_tag.json  # Containing {"tags": ["road"]}
+        └── img_002_tag.json  # Containing {"tags": ["road"], "category_map": {"road": "accessible_area"}}
 ```
 
 After running `python scripts/detect_segment_images.py --folder my_dataset`:
@@ -244,7 +259,7 @@ my_dataset/
         ├── img_002_tag.json  # Updated with "objects"
         └── img_002_masks.npy # Generated masks for objects in img_002
 ```
-*(Note: If an `imagename_tag.json` file is missing or its "tags" list is empty for a given image, that image might be skipped, and no `_masks.npy` file will be generated for it.)*
+*(Note: If an `imagename_tag.json` file is missing or its tag list is empty for a given image, that image might be skipped, and no `_masks.npy` file will be generated for it.)*
 ### 5. How Batch Processing Works (`batch_processor.py`)
 
 The `batch_processor.py` script provides a generic framework for processing images in batches. This utility is used internally by other scripts like `batch_depth_estimation.py`, `tag_images.py`, and `detect_segment_images.py` to handle large datasets more efficiently.
