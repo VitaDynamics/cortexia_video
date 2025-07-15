@@ -98,7 +98,6 @@ def main():
             logger.error("Processing failed. No output file was generated.")
             print("Processing failed. No output file was generated.")
             sys.exit(1)
-
     except Exception as e:
         logger.error(f"An error occurred during processing: {e}", exc_info=True)
         print(f"Error: {e}")
