@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from PIL import Image
 from transformers.models.sam import SamModel, SamProcessor
+from .sam2_object_segmentation import SAM2ImageSegmentor # Added for SAM2
 
 from cortexia_video.utils import mask_to_polygon, polygon_to_mask
 
@@ -606,3 +607,161 @@ class ObjectSegmenter:
 
         self.logger.info(f"Removed {count} empty masks")
         return cleaned_masks
+
+
+class SAM2ObjectSegmenterWrapper:
+    def __init__(self, config_manager):
+        """
+        Initialize the SAM2ObjectSegmenterWrapper with SAM2 model.
+
+        Args:
+            config_manager: Configuration manager instance
+        """
+        self.config_manager = config_manager
+        self.logger = logging.getLogger(__name__)
+
+        checkpoint_path = config_manager.get_param("model_settings.sam2_model_checkpoint_path")
+        model_cfg_path = config_manager.get_param("model_settings.sam2_model_config_path")
+
+        if not checkpoint_path or not model_cfg_path:
+            self.logger.error("SAM2 model checkpoint_path or model_cfg_path is missing in config.")
+            raise ValueError("SAM2 model checkpoint_path or model_cfg_path is missing in config.")
+
+        try:
+            self.segmentor = SAM2ImageSegmentor(model_cfg=model_cfg_path, checkpoint=checkpoint_path)
+            self.logger.info("SAM2ObjectSegmenterWrapper initialized successfully with SAM2ImageSegmentor.")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize SAM2ImageSegmentor: {str(e)}")
+            raise RuntimeError(f"Failed to initialize SAM2ImageSegmentor: {str(e)}")
+
+    def segment_object(
+        self,
+        images_data,  # Can be List[Image.Image] or Image.Image
+        batch_input_boxes,  # For single image: [[x1,y1,x2,y2], ...]; For batch: [[[x1,y1,x2,y2], ...], ...]
+        batch_input_points: Optional[List[Optional[List[List[float]]]]] = None, # Not used by this SAM2 wrapper yet
+        batch_input_labels: Optional[List[Optional[List[int]]]] = None, # Not used by this SAM2 wrapper yet
+    ) -> List[np.ndarray]:
+        """
+        Segment objects in a batch of images using SAM2, primarily with bounding boxes as prompts.
+
+        Args:
+            images_data: List of input images (PIL Images) or a single PIL Image.
+            batch_input_boxes: List of lists of bounding boxes.
+                               For a single image: [[x_min, y_min, x_max, y_max], ...]
+                               For a batch of images: [[[box1_img1], [box2_img1]], [[box1_img2]], ...]
+            batch_input_points: (Currently not implemented for SAM2 wrapper) Point prompts.
+            batch_input_labels: (Currently not implemented for SAM2 wrapper) Labels for point prompts.
+
+        Returns:
+            List of lists of binary masks (np.uint8). For a single image input, returns a list of masks.
+            e.g., single image: [mask1, mask2, ...]
+            e.g., batch: [[mask1_img1, ...], [mask1_img2, ...], ...]
+        """
+        is_single_image = isinstance(images_data, Image.Image)
+
+        if is_single_image:
+            images_list = [images_data]
+            # Ensure batch_input_boxes is wrapped in a list for single image case
+            # Expected for single image: [[b1], [b2]] -> becomes [[[b1], [b2]]]
+            current_batch_boxes = [batch_input_boxes] if batch_input_boxes is not None else [None]
+        else:
+            images_list = images_data
+            current_batch_boxes = batch_input_boxes
+
+        if batch_input_points is not None or batch_input_labels is not None:
+            self.logger.warning("SAM2ObjectSegmenterWrapper currently only supports box prompts. Point prompts are ignored.")
+
+        all_masks_list = []
+
+        for i in range(len(images_list)):
+            img_pil = images_list[i]
+            if img_pil is None:
+                self.logger.warning(f"Skipping None image at index {i}.")
+                all_masks_list.append([]) # Keep structure consistent
+                continue
+
+            img_np = np.array(img_pil.convert("RGB")) # Ensure RGB
+
+            boxes_for_image = current_batch_boxes[i] if current_batch_boxes and i < len(current_batch_boxes) else None
+
+            image_masks_np = []
+            if boxes_for_image is not None and len(boxes_for_image) > 0:
+                try:
+                    # Ensure boxes_for_image is a list of lists/tuples, convert to tensor
+                    # e.g., [[x1,y1,x2,y2], [x1,y1,x2,y2]]
+                    if not all(isinstance(b, (list, tuple)) and len(b) == 4 for b in boxes_for_image):
+                        raise ValueError("Each box in boxes_for_image must be a list or tuple of 4 coordinates.")
+
+                    boxes_tensor = torch.tensor(boxes_for_image, dtype=torch.float)
+                    # multimask_output=False to get one mask per box.
+                    # SAM2ImageSegmentor.segment_image handles device placement for tensor and model.
+                    prompts = {"box": boxes_tensor, "multimask_output": False}
+
+                    self.logger.debug(f"Processing image {i} with {len(boxes_for_image)} boxes using SAM2.")
+                    masks_torch, scores, logits = self.segmentor.segment_image(img_np, prompts)
+
+                    # masks_torch expected to be (num_boxes, H, W)
+                    for m_idx in range(masks_torch.shape[0]):
+                        mask_np = masks_torch[m_idx].cpu().numpy().astype(np.uint8)
+                        if mask_np.sum() == 0: # Skip empty masks
+                            self.logger.debug(f"Empty mask generated for image {i}, box {m_idx}. Skipping.")
+                            continue
+                        image_masks_np.append(mask_np)
+                    self.logger.debug(f"Generated {len(image_masks_np)} non-empty masks for image {i}.")
+
+                except Exception as e:
+                    self.logger.error(f"Error segmenting image {i} with SAM2: {str(e)}")
+                    # Fallback to empty masks for this image to avoid crashing the whole batch
+                    image_masks_np = []
+            else:
+                self.logger.debug(f"No boxes provided for image {i}, or boxes_for_image is None. Skipping SAM2 segmentation for this image.")
+                image_masks_np = [] # No boxes, so no masks
+
+            all_masks_list.append(image_masks_np)
+
+        if is_single_image:
+            return all_masks_list[0] if all_masks_list else []
+        else:
+            return all_masks_list
+
+
+def get_segmenter(config_manager):
+    logger = logging.getLogger(__name__)
+    # Default to HuggingFace SAM if segmentation_model is not specified or not SAM2
+    segmentation_model_id = config_manager.get_param("model_settings.segmentation_model", "facebook/sam-vit-base")
+
+    # Check if sam2_model_checkpoint_path exists and is not empty, to infer user intent for SAM2
+    sam2_checkpoint = config_manager.get_param("model_settings.sam2_model_checkpoint_path")
+    sam2_model_cfg = config_manager.get_param("model_settings.sam2_model_config_path")
+
+    # Condition to use SAM2: if 'sam2' is in the model_id OR if sam2_checkpoint and sam2_model_cfg are explicitly set.
+    # This provides flexibility: user can set segmentation_model="sam2_hiera_large" (hypothetical)
+    # OR they can keep segmentation_model="facebook/sam-vit-huge" but provide SAM2 specific paths to override.
+
+    use_sam2 = False
+    if "sam2" in segmentation_model_id.lower():
+        logger.info(f"SAM2 explicitly selected via segmentation_model: {segmentation_model_id}.")
+        use_sam2 = True
+    elif sam2_checkpoint and sam2_model_cfg:
+        logger.info(f"SAM2 inferred due to presence of sam2_model_checkpoint_path and sam2_model_config_path.")
+        use_sam2 = True
+
+    if use_sam2:
+        if not sam2_checkpoint or not sam2_model_cfg:
+            error_msg = (
+                f"SAM2 segmenter intended (model ID: '{segmentation_model_id}', checkpoint: '{sam2_checkpoint}', cfg: '{sam2_model_cfg}'), "
+                "but 'sam2_model_checkpoint_path' or 'sam2_model_config_path' is effectively missing or empty in the configuration."
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        logger.info("Successfully verified SAM2 configuration. Initializing SAM2ObjectSegmenterWrapper.")
+        try:
+            return SAM2ObjectSegmenterWrapper(config_manager)
+        except Exception as e:
+            logger.error(f"Failed to initialize SAM2ObjectSegmenterWrapper: {e}. Falling back to default segmenter if possible, or reraising.")
+            # Depending on policy, either raise e or try to return default. For now, let's be strict.
+            raise e  # Or, could attempt to return ObjectSegmenter(config_manager) as a fallback
+    else:
+        logger.info(f"Using HuggingFace SAM Object Segmenter for model ID: {segmentation_model_id}")
+        return ObjectSegmenter(config_manager)
