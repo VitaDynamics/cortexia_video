@@ -150,15 +150,17 @@ class Qwen2_5VLLister(ObjectLister):
                 clean_up_tokenization_spaces=False,
             )
             answer = output_text[0]
-            import ast
-
-            try:
-                labels = ast.literal_eval(answer)
-                if isinstance(labels, list):
-                    return [str(label) for label in labels]
-                return []  # Return empty list if labels is not a list
-            except Exception:
-                return [x.strip() for x in answer.split(",") if x.strip()]
+            return answer
+            
+            # TODO: We need to extend this class instead of list objects.
+            # import ast
+            # try:
+            #     labels = ast.literal_eval(answer)
+            #     if isinstance(labels, list):
+            #         return [str(label) for label in labels]
+            #     return []  # Return empty list if labels is not a list
+            # except Exception:
+            #     return [x.strip() for x in answer.split(",") if x.strip()]
         except Exception as e:
             print(f"Error in Qwen2_5VLLister object listing: {e}")
             return []
