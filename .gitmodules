@@ -4,6 +4,3 @@
 [submodule "recognize-anything"]
 	path = recognize-anything
 	url = https://ghfast.top/https://github.com/xinyu1205/recognize-anything.git
-[submodule "ml-depth-pro"]
-	path = ml-depth-pro
-	url = https://ghfast.top/https://github.com/apple/ml-depth-pro
