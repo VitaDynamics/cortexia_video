@@ -7,17 +7,19 @@ A comprehensive computer vision framework for automated image analysis, featurin
 This repository provides a complete workflow for processing image datasets through three sequential stages:
 
 1. **Image Tagging** (`tag_images.py`) - Automatically identifies and tags objects/areas in images using Vision Language Models
-2. **Object Detection & Segmentation** (`detect_segment_images.py`) - Detects and segments tagged objects using state-of-the-art models
-3. **Depth Estimation** (`batch_depth_estimation.py`) - Generates depth maps for processed images
+2. **Image Captioning** (`caption_images.py`) - Generates detailed captions for each image using a VLM
+3. **Object Detection & Segmentation** (`detect_segment_images.py`) - Detects and segments tagged objects using state-of-the-art models
+4. **Depth Estimation** (`batch_depth_estimation.py`) - Generates depth maps for processed images
 
 ### Pipeline Diagram
 
 ```mermaid
 graph TD
     A[Dataset] --> B[tag_images.py<br/>Image Tagging]
-    B --> C[detect_segment_images.py<br/>Detection & Segmentation]
-    C --> D[batch_depth_estimation.py<br/>Depth Estimation]
-    D --> E[Processed Data]
+    B --> C[caption_images.py<br/>Image Captioning]
+    C --> D[detect_segment_images.py<br/>Detection & Segmentation]
+    D --> E[batch_depth_estimation.py<br/>Depth Estimation]
+    E --> F[Processed Data]
 ```
 
 ## Table of Contents
@@ -70,6 +72,13 @@ pip install -e .
 
 # Or using uv (recommended)
 uv sync
+```
+
+### 3. Environment Setup
+Correctly setup the environment variable for users in CHINA and setup model save dir. 
+```bash
+export HF_HOME=/vita-vepfs-data/fileset1/usr_data/min.dong/model/huggingface
+export HF_ENDPOINT=https://hf-mirror.com
 ```
 
 ### 3. Download Required Models

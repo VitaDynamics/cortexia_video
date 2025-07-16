@@ -7,6 +7,7 @@ import toml
 import yaml
 
 from cortexia_video.object_listing import OBJECT_LISTER_REGISTRY
+from cortexia_video.ImageCaption import IMAGE_CAPTIONER_REGISTRY
 
 
 class ConfigManager:
@@ -135,6 +136,14 @@ class ConfigManager:
             if model_name.startswith(pattern):
                 return lister_cls(self)
         raise ValueError(f"Unknown object listing model: {model_name}")
+
+    def get_image_captioner(self):
+        """Return the configured ImageCaptioner instance."""
+        model_name = self.get_param("model_settings.image_captioning_model", "vikhyatk/moondream2")
+        for pattern, captioner_cls in IMAGE_CAPTIONER_REGISTRY.items():
+            if model_name.startswith(pattern):
+                return captioner_cls(self)
+        raise ValueError(f"Unknown image captioning model: {model_name}")
 
     def get_feature_extractor(self) -> Optional[Any]:
         """
