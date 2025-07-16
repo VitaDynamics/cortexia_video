@@ -310,6 +310,7 @@ dependencies = [
     { name = "fairscale" },
     { name = "ftfy" },
     { name = "ipykernel" },
+    { name = "json-repair" },
     { name = "matplotlib" },
     { name = "modelscope" },
     { name = "nltk" },
@@ -341,6 +342,7 @@ requires-dist = [
     { name = "fairscale", specifier = ">=0.4.13" },
     { name = "ftfy", specifier = ">=6.3.1" },
     { name = "ipykernel", specifier = ">=6.29.5" },
+    { name = "json-repair", specifier = ">=0.47.7" },
     { name = "matplotlib", specifier = ">=3.10.3" },
     { name = "modelscope", specifier = ">=1.25.0" },
     { name = "nltk", specifier = ">=3.9.1" },
@@ -758,6 +760,15 @@ source = { registry = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/" }
 sdist = { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/30/08/8bd4a0250247861420a040b33ccf42f43c426ac91d99405374ef117e5872/joblib-1.5.0.tar.gz", hash = "sha256:d8757f955389a3dd7a23152e43bc297c2e0c2d3060056dad0feefc88a06939b5", size = 330234 }
 wheels = [
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/da/d3/13ee227a148af1c693654932b8b0b02ed64af5e1f7406d56b088b57574cd/joblib-1.5.0-py3-none-any.whl", hash = "sha256:206144b320246485b712fc8cc51f017de58225fa8b414a1fe1764a7231aca491", size = 307682 },
+]
+
+[[package]]
+name = "json-repair"
+version = "0.47.7"
+source = { registry = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/" }
+sdist = { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/8f/91/4fb4e2c3d4d1a59252ca1b32936b883d0cd9f1e03f07edb6005aed1dc4bc/json_repair-0.47.7.tar.gz", hash = "sha256:04a5469e50f7f61c7756ddf3370a56fa21cebc1258e3f6a1a3de988e521d5eb8", size = 34567 }
+wheels = [
+    { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/d4/ae/c8ac14cf7922be8908da2490ce5e37a69c593017ec57698afe04cd1567dc/json_repair-0.47.7-py3-none-any.whl", hash = "sha256:b2b5c9432289434730ef8b134a73602325fa689db323d6021249f363a7dd23c0", size = 26189 },
 ]
 
 [[package]]

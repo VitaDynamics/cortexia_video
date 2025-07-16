@@ -2,11 +2,12 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Dict
 import os
 
 import numpy as np
 from PIL import Image
+from json_repair import repair_json
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -36,25 +37,46 @@ def tagging_inference_func(
     # Batch process images for tagging
     results = []
     for img in images:
-        tags = lister.list_objects_in_image(img)
-        results.append(tags)
+        response_text = lister.list_objects_in_image(img)
+        try:
+            # Attempt to repair and parse the JSON output from the VLM
+            repaired_json = repair_json(response_text)
+            parsed_json = json.loads(repaired_json)
+            results.append(parsed_json)
+        # FIXME: if json repare failed, it will return a empty json. Never have except.
+        except json.JSONDecodeError:
+            print(f"Failed to parse JSON for {paths}: {response_text}")
+            results.append({})  # Append an empty dict on failure
     return results
 
 
-def tagging_save_func(path: Path, result: Any) -> None:
+
+
+def tagging_save_func(path: Path, result: Any, detectable_tags_keys: List[str]) -> None:
     """Save function for tagging results.
 
     Args:
         path: Original image path
-        result: Tagging result (list of tags)
+        result: Tagging result (parsed JSON from VLM)
+        detectable_tags_keys: List of keys for detectable tags
     """
     out_path = path.with_name(f"{path.stem}_tag.json")
-    with open(out_path, "w") as f:
-        json.dump({"tags": result}, f, indent=2)
+    
+    # Extract detectable tags from the result
+    detectable_tags = []
+    for key in detectable_tags_keys:
+        if key in result:
+            detectable_tags.extend(result[key])
+            
+    result_with_detectable = result.copy()
+    result_with_detectable["detectable_tags"] = detectable_tags
+
+    with open(out_path, "w", encoding='utf-8') as f:
+        json.dump(result_with_detectable, f, indent=2, ensure_ascii=False)
     print(f"Saved tags for {path} -> {out_path}")
 
 
-def process_video_folder(folder: Path, lister) -> None:
+def process_video_folder(folder: Path, lister, detectable_tags_keys: List[str]) -> None:
     """Annotate all images in a video folder with drivable area tags."""
     images = collect_images(folder)
     if not images:
@@ -71,7 +93,11 @@ def process_video_folder(folder: Path, lister) -> None:
         return tagging_inference_func(imgs, paths, lister)
 
     # Process batch
-    processor.process_batch(inference_func=inference_func, save_func=tagging_save_func)
+    # Create a save function with the detectable tags
+    def save_func(path, result):
+        return tagging_save_func(path, result, detectable_tags_keys)
+
+    processor.process_batch(inference_func=inference_func, save_func=save_func)
 
     # Clean up
     processor.clear_buffer()
@@ -101,30 +127,48 @@ def main() -> None:
     )
     
     parser.add_argument(
-        "--drivable-keywords",
+        "--categories",
         type=str,
-        default="",
-        help="Comma-separated list of drivable area keywords to use for tagging",
+        default=json.dumps({
+            "Detectable tags": ["Drivable Area", "Traffic Participants", "Environmental Landmarks"],
+            "Undetectable tags": ["Light and Weather"]
+        }),
+        help="JSON string of categories for tagging",
     )
     
     args = parser.parse_args()
-
-    DRIVABLE_KEYWORDS = [
-        "road",
-        "street",
-    ]
-
-    TASK_PROMPT = f"""Identify and list all objects in this image that represent passable areas or surfaces where a person, vehicle, or entity could travel, walk, or move through. Focus on identifying any areas that allow movement or transportation.
-
-    Examples of passable areas to look for include (but are not limited to): {", ".join(DRIVABLE_KEYWORDS)}.
-
-    Please list all visible passable areas, surfaces, and pathways in the image, even if they are partially visible or in the background. Be comprehensive and include any area that could be used for movement or transportation."""
-
-    # merge drivable keywords
-    DRIVABLE_KEYWORDS.extend(parse_comma_separated_string(args.drivable_keywords))
     
-    # print current config for accessible area
-    print(f"Current drivable area keywords: {DRIVABLE_KEYWORDS}, you can add more with --drivable-keywords")
+    categories = json.loads(args.categories)
+    detectable_tags_keys = categories.get("Detectable tags", [])
+    
+    all_category_keys = []
+    for key in categories:
+        all_category_keys.extend(categories[key])
+    
+    category_json_structure = {cat: [] for cat in all_category_keys}
+    
+    TASK_PROMPT = f"""Please analyze the provided image and generate a comprehensive list of relevant tags. The tags should be categorized according to the following structure. Please output a JSON object with the specified keys.
+
+    For example:
+    ```json
+    {{
+      "Drivable Area": ["Asphalt road", "Sidewalk"],
+      "Traffic Participants": ["Car", "Pedestrian"],
+      "Environmental Landmarks": ["Traffic light", "Road sign"],
+      "Light and Weather": ["Daytime", "Sunny"]
+    }}
+    ```
+
+    Here is the required structure for your response:
+    {json.dumps(category_json_structure, indent=2, ensure_ascii=False)}
+
+    Instructions:
+    - For each category, provide a list of descriptive tags that accurately represent the objects, scenes, and conditions in the image.
+    - If a category is not applicable, provide an empty list.
+    - Ensure the output is a valid JSON object.
+    - The language of the tags should be English.
+    - Only return the JSON object, without any other text or explanations.
+    """
 
     cfg = ConfigManager(config_file_path=str(args.config))
     cfg.load_config()
@@ -144,7 +188,7 @@ def main() -> None:
         images = collect_images(sub)
         if len(images) >= args.min_images:
             print(f"Processing video folder '{sub.name}' with {len(images)} images...")
-            process_video_folder(sub, lister)
+            process_video_folder(sub, lister, detectable_tags_keys)
             processed_count += 1
         else:
             print(

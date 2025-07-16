@@ -48,10 +48,8 @@ def parse_tags_string(tags_string: str) -> List[str]:
 
 def load_tags(tag_file: Path) -> List[str]:
     """Load and parse tags from a JSON file.
-
     Args:
         tag_file: Path to the JSON file containing tags
-
     Returns:
         List of individual tag strings
     """
@@ -61,26 +59,7 @@ def load_tags(tag_file: Path) -> List[str]:
     with open(tag_file, "r") as f:
         data = json.load(f)
 
-    raw_tags = data.get("tags", [])
-    if not raw_tags:
-        return []
-
-    # Handle different tag formats
-    all_tags = []
-    for tag_item in raw_tags:
-        if isinstance(tag_item, str):
-            # Check if it's a multi-line string with '- ' prefixes
-            if "\n" in tag_item and "- " in tag_item:
-                parsed_tags = parse_tags_string(tag_item)
-                all_tags.extend(parsed_tags)
-            else:
-                # Single tag string
-                all_tags.append(tag_item.strip())
-        elif isinstance(tag_item, list):
-            # Already a list of tags
-            all_tags.extend(tag_item)
-
-    return all_tags
+    return data.get("detectable_tags", [])
 
 
 def detect_segment_inference_func(
@@ -160,7 +139,20 @@ def detect_segment_save_func(path: Path, result: Any) -> None:
     masks = result["masks"]
 
     # Load original tags
-    tags = load_tags(tag_file)
+    if not tag_file.exists():
+        print(f"Tag file {tag_file} not found, skipping")
+        return
+
+    with open(tag_file, "r") as f:
+        data = json.load(f)
+
+    # Get detected labels
+    detected_labels = [det["label"] for det in detections]
+    data["detectable_tags"] = detected_labels
+
+    # Remove the old 'tags' key if it exists
+    if "tags" in data:
+        del data["tags"]
 
     obj_entries = []
     masks_dict = {}
@@ -176,10 +168,12 @@ def detect_segment_save_func(path: Path, result: Any) -> None:
         if idx < len(masks):
             masks_dict[obj_id] = masks[idx]
 
+    # Add objects to the data
+    data["objects"] = obj_entries
+
     # Save updated json
-    out_data = {"tags": tags, "objects": obj_entries}
     with open(tag_file, "w") as f:
-        json.dump(out_data, f, indent=2)
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
     # Save mask npy
     if masks_dict:
