@@ -23,22 +23,24 @@ class MoonDreamCaptioner(ImageCaptioner):
 
     def __init__(self, config_manager):
         super().__init__(config_manager)
+        # This is a 2B Model in huggingface
         model_name = config_manager.get_param(
             "model_settings.image_captioning_model", "vikhyatk/moondream2"
         )
-        revision = "2025-04-14"
+        revision = "2025-06-21"
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
             revision=revision,
             trust_remote_code=True,
-            device_map="auto",
+            device_map={"": "cuda"},
         )
 
     def caption_image(self, image_data: Any) -> str:
         if isinstance(image_data, np.ndarray):
             image_data = Image.fromarray(image_data)
         try:
-            result = self.model.caption(image_data)
+            # we need long caption here.
+            result = self.model.caption(image_data, length="long", stream=False)
             if isinstance(result, dict):
                 return str(result.get("caption", ""))
             return str(result)

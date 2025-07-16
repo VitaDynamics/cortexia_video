@@ -26,7 +26,7 @@ num_beams = 1
 max_tokens = 512
 
 
-[processing]
+[processing] # FIXME: TO use scripts, we dropoff the usage of processing wiht Orchestration. May need update.
 default_mode = "list | detect | segment | describe | extract_scene | extract_object"
 input_video_path = "sample_data/"
 output_directory = "output/" # Output directory for the processed video for visualization. Only works if visualization is enabled.

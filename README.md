@@ -74,6 +74,13 @@ pip install -e .
 uv sync
 ```
 
+### 3. Environment Setup
+Correctly setup the environment variable for users in CHINA and setup model save dir. 
+```bash
+export HF_HOME=/vita-vepfs-data/fileset1/usr_data/min.dong/model/huggingface
+export HF_ENDPOINT=https://hf-mirror.com
+```
+
 ### 3. Download Required Models
 
 The models will be automatically downloaded when first used, but you can pre-download them:

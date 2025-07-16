@@ -35,6 +35,7 @@ dependencies = [
     "scipy>=1.15.3",
     "nltk>=3.9.1",
     "ipykernel>=6.29.5",
+    "python-dotenv>=1.1.1",
 ]
 
 [project.scripts]
