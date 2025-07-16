@@ -236,7 +236,54 @@ my_dataset/
         └── img_002_masks.npy # Generated masks for objects in img_002
 ```
 *(Note: If an `imagename_tag.json` file is missing or its tag list is empty for a given image, that image might be skipped, and no `_masks.npy` file will be generated for it.)*
-### 4. How Batch Processing Works (`batch_processor.py`)
+
+### 4. Image Captioning (`caption_images.py`)
+
+This script generates natural-language captions for each image and stores them in the existing
+`_tag.json` files. If a tag file does not yet exist for an image, it will be created automatically.
+
+**Purpose:** To produce a short descriptive caption for every image frame.
+
+**Command-Line Arguments:**
+
+* `--folder <path>`: (Required) Root directory containing subfolders of images (e.g., individual
+  video clips). Each subfolder is processed independently.
+* `--config <path>`: (Optional) Path to the configuration file specifying the captioning model.
+  Defaults to `config/heavy_mode.toml`.
+* `--min-images <number>`: (Optional) Minimum number of JPEG images a subfolder must contain to be
+  processed. Defaults to `5`.
+
+**Input:**
+
+* JPEG images stored in subfolders of the specified `--folder` directory.
+
+**Output:**
+
+* For each image `frame.jpg`, a corresponding `frame_tag.json` file is created or updated to include
+  a `"caption"` field containing the generated text.
+
+**Folder Structure Example:**
+
+```
+my_clips/
+└── clip_01/
+    ├── frame001.jpg
+    ├── frame002.jpg
+    └── ...
+```
+
+Running `python scripts/caption_images.py --folder my_clips` results in:
+
+```
+my_clips/
+└── clip_01/
+    ├── frame001.jpg
+    ├── frame001_tag.json  # Includes { "caption": "..." }
+    ├── frame002.jpg
+    └── frame002_tag.json  # Includes { "caption": "..." }
+```
+
+### 5. How Batch Processing Works (`batch_processor.py`)
 
 The `batch_processor.py` script provides a generic framework for processing images in batches. This utility is used internally by other scripts like `batch_depth_estimation.py`, `tag_images.py`, and `detect_segment_images.py` to handle large datasets more efficiently.
 
@@ -262,7 +309,7 @@ The use of batching helps in:
 *   **Improving Throughput:** Some models can achieve better performance when processing data in batches.
 
 While the batch size is often pre-set in the main scripts, understanding that batch processing is happening can be useful for diagnosing performance or memory issues.
-### 5. Target Folder and Source Folder Structures (Summary)
+### 6. Target Folder and Source Folder Structures (Summary)
 
 This section summarizes the expected input (source) and output (target) folder structures for the main scripts.
 
