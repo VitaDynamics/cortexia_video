@@ -9,6 +9,7 @@ segmentation_model = "facebook/sam-vit-huge"
 description_model = "nvidia/DAM-3B-Self-Contained"
 clip_feature_model = "PE-Core-B16-224" # Current SOTA CLIP like Vision Encoder.
 clip_feature_model_identifier = "clip_pe"
+image_captioning_model = "vikhyatk/moondream2"
 
 [detection_settings]
 box_threshold = 0.3

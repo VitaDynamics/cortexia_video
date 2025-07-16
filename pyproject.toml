@@ -36,6 +36,7 @@ dependencies = [
     "nltk>=3.9.1",
     "ipykernel>=6.29.5",
     "json-repair>=0.47.7",
+    "python-dotenv>=1.1.1",
 ]
 
 [project.scripts]
