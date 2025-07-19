@@ -86,6 +86,7 @@ This script is used to automatically generate initial descriptive tags for image
 *   `--folder <path>`: (Required) The root folder containing subfolders (e.g., video folders). Each subfolder should contain the images to be tagged.
 *   `--config <path>`: (Optional) Path to a configuration file (e.g., `config/heavy_mode.toml`) that specifies the Vision Language Model (VLM) or other models used for object listing. Defaults to `config/heavy_mode.toml`.
 *   `--min-images <number>`: (Optional) Minimum number of JPEG images a subfolder must contain to be processed. Defaults to 5.
+*   `--extra-tags-file <path>`: (Optional) JSON file with additional tags to merge with the VLM results before detection. Defaults to `config/default_extra_tags.json`.
 *   `--categories <json_string>`: (Optional) A JSON string that defines categories of tags, separating them into "detectable" and "undetectable" groups. This allows the subsequent detection script to focus only on relevant objects.
     *   Example: `'{"detectable_tags": ["car", "person", "road"], "undetectable_tags": ["daylight", "cloudy", "building"]}'`
 
@@ -224,7 +225,7 @@ my_dataset/
         └── img_002_tag.json  # Containing {"tags": ["road"], "category_map": {"road": "accessible_area"}}
 ```
 
-After running `python scripts/detect_segment_images.py --folder my_dataset`:
+After running `python scripts/detect_segment_images.py --folder my_dataset` (using the default extra tag file):
 ```
 my_dataset/
 └── sequence1/
