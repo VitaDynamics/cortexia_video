@@ -1,0 +1,72 @@
+{
+  "drivable_areas": [
+    "road",
+    "highway",
+    "intersection",
+    "roundabout",
+    "parking_lot",
+    "sidewalk",
+    "bike_lane",
+    "shoulder",
+    "median"
+  ],
+  "traffic_participants": [
+    "pedestrian",
+    "child",
+    "elderly",
+    "wheelchair_user",
+    "vehicle",
+    "car",
+    "truck",
+    "bus",
+    "motorcycle",
+    "emergency_vehicle",
+    "construction_vehicle",
+    "cyclist",
+    "bicycle",
+    "motorcyclist",
+    "e_bike",
+    "scooter",
+    "animal",
+    "dog",
+    "cat",
+    "bird"
+  ],
+  "environmental_markers": [
+    "traffic_sign",
+    "stop_sign",
+    "yield_sign",
+    "speed_limit",
+    "traffic_light",
+    "lane_marking",
+    "crosswalk",
+    "stop_line",
+    "arrow",
+    "zebra_crossing",
+    "pole",
+    "tree",
+    "building",
+    "fence",
+    "barrier",
+    "guardrail",
+    "curb"
+  ],
+  "lighting_conditions": [
+    "day",
+    "night",
+    "dawn",
+    "dusk",
+    "overcast",
+    "shadow",
+    "glare"
+  ],
+  "weather_conditions": [
+    "clear",
+    "rain",
+    "snow",
+    "fog",
+    "haze",
+    "storm",
+    "windy"
+  ]
+}

@@ -216,12 +216,14 @@ dataset/
 
 - Images must have corresponding `_tag.json` files from Stage 1
 - Tags will guide what objects to detect and segment
+- A default list of common road-related tags is provided in `config/default_extra_tags.json`
 
 #### Command-Line Arguments
 
 - `--folder` (required): Root folder containing video subfolders with tagged images
 - `--config` (optional): Path to configuration file (default: `config/heavy_mode.toml`)
 - `--min-images` (optional): Minimum number of JPEG images required per subfolder (default: 5)
+- `--extra-tags-file` (optional): JSON file containing tags that will be merged with those from Stage 1 before detection. Defaults to `config/default_extra_tags.json`.
 
 #### Usage Examples
 
@@ -229,10 +231,11 @@ dataset/
 # Basic usage (requires tag files from Stage 1)
 python scripts/detect_segment_images.py --folder /path/to/dataset
 
-# Using custom configuration
+# Using custom configuration and tag file
 python scripts/detect_segment_images.py \
     --folder /path/to/dataset \
-    --config config/heavy_mode.toml
+    --config config/heavy_mode.toml \
+    --extra-tags-file my_tags.json
 ```
 
 #### Input Requirements
