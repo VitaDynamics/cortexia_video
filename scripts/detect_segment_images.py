@@ -62,7 +62,7 @@ def _extract_tags(obj: Any) -> List[str]:
 
 def load_extra_tags(extra_file: Path) -> List[str]:
     """Load additional tags from a JSON file."""
-    if not extra_file or not extra_file.exists():
+if not extra_file.exists():
         return []
     with open(extra_file, "r", encoding="utf-8") as f:
         data = json.load(f)
