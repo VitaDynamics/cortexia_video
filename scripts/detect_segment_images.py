@@ -46,20 +46,48 @@ def parse_tags_string(tags_string: str) -> List[str]:
     return tags
 
 
-def load_tags(tag_file: Path) -> List[str]:
-    """Load and parse tags from a JSON file.
-    Args:
-        tag_file: Path to the JSON file containing tags
-    Returns:
-        List of individual tag strings
-    """
-    if not tag_file.exists():
+def _extract_tags(obj: Any) -> List[str]:
+    """Recursively extract tag strings from nested dict/list structures."""
+    tags: List[str] = []
+    if isinstance(obj, dict):
+        for value in obj.values():
+            tags.extend(_extract_tags(value))
+    elif isinstance(obj, list):
+        for item in obj:
+            tags.extend(_extract_tags(item))
+    elif isinstance(obj, str):
+        tags.append(obj)
+    return tags
+
+
+def load_extra_tags(extra_file: Path) -> List[str]:
+    """Load additional tags from a JSON file."""
+if not extra_file.exists():
         return []
-
-    with open(tag_file, "r") as f:
+    with open(extra_file, "r", encoding="utf-8") as f:
         data = json.load(f)
+    return list(dict.fromkeys(_extract_tags(data)))
 
-    return data.get("detectable_tags", [])
+
+def load_tags(tag_file: Path, extra_tags: List[str] | None = None) -> List[str]:
+    """Load detectable tags from a tag file and merge with extra tags."""
+    if not tag_file.exists():
+        base_tags: List[str] = []
+    else:
+        with open(tag_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        base_tags = data.get("detectable_tags", [])
+
+    if extra_tags:
+        base_tags.extend(extra_tags)
+    # Deduplicate while preserving order
+    seen = set()
+    merged: List[str] = []
+    for t in base_tags:
+        if t not in seen:
+            merged.append(t)
+            seen.add(t)
+    return merged
 
 
 def detect_segment_inference_func(
@@ -67,6 +95,7 @@ def detect_segment_inference_func(
     paths: List[Path],
     detector: ObjectDetector,
     segmenter: ObjectSegmenter,
+    extra_tags: List[str] | None = None,
 ) -> List[Any]:
     """Inference function for detection and segmentation.
 
@@ -85,7 +114,7 @@ def detect_segment_inference_func(
     tags_list = []
     for path in paths:
         tag_file = path.with_name(f"{path.stem}_tag.json")
-        tags = load_tags(tag_file)
+        tags = load_tags(tag_file, extra_tags)
         tags_list.append(tags)
 
     # Filter out images without tags
@@ -143,7 +172,7 @@ def detect_segment_save_func(path: Path, result: Any) -> None:
         print(f"Tag file {tag_file} not found, skipping")
         return
 
-    with open(tag_file, "r") as f:
+    with open(tag_file, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     # Get detected labels
@@ -172,7 +201,7 @@ def detect_segment_save_func(path: Path, result: Any) -> None:
     data["objects"] = obj_entries
 
     # Save updated json
-    with open(tag_file, "w") as f:
+    with open(tag_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
     # Save mask npy
@@ -185,7 +214,10 @@ def detect_segment_save_func(path: Path, result: Any) -> None:
 
 
 def process_video_folder(
-    folder: Path, detector: ObjectDetector, segmenter: ObjectSegmenter
+    folder: Path,
+    detector: ObjectDetector,
+    segmenter: ObjectSegmenter,
+    extra_tags: List[str] | None = None,
 ) -> None:
     images = collect_images(folder)
     if not images:
@@ -199,7 +231,9 @@ def process_video_folder(
 
     # Create inference function with detector and segmenter
     def inference_func(imgs, paths):
-        return detect_segment_inference_func(imgs, paths, detector, segmenter)
+        return detect_segment_inference_func(
+            imgs, paths, detector, segmenter, extra_tags
+        )
 
     # Process batch
     processor.process_batch(
@@ -232,12 +266,20 @@ def main() -> None:
         default=5,
         help="Minimum number of JPEG images required for a folder to be considered a video folder",
     )
+    parser.add_argument(
+        "--extra-tags-file",
+        type=Path,
+        default=Path("config/default_extra_tags.json"),
+        help="Path to JSON file containing additional tags to detect",
+    )
     args = parser.parse_args()
 
     cfg = ConfigManager(config_file_path=str(args.config))
     cfg.load_config()
     detector = ObjectDetector(cfg)
     segmenter = ObjectSegmenter(cfg)
+
+    extra_tags = load_extra_tags(args.extra_tags_file)
 
     print(f"Processing root folder: {args.folder}")
     print(f"Minimum images required per subfolder: {args.min_images}")
@@ -249,7 +291,7 @@ def main() -> None:
         images = collect_images(sub)
         if len(images) >= args.min_images:
             print(f"Processing video folder '{sub.name}' with {len(images)} images...")
-            process_video_folder(sub, detector, segmenter)
+            process_video_folder(sub, detector, segmenter, extra_tags)
             processed_count += 1
         else:
             print(
