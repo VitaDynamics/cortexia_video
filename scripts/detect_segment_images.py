@@ -62,11 +62,11 @@ def _extract_tags(obj: Any) -> List[str]:
 
 def load_extra_tags(extra_file: Path) -> List[str]:
     """Load additional tags from a JSON file."""
-if not extra_file.exists():
+    if not extra_file.exists():
         return []
     with open(extra_file, "r", encoding="utf-8") as f:
         data = json.load(f)
-    return list(dict.fromkeys(_extract_tags(data)))
+        return list(dict.fromkeys(_extract_tags(data)))
 
 
 def load_tags(tag_file: Path, extra_tags: List[str] | None = None) -> List[str]:
