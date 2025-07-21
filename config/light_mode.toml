@@ -29,6 +29,7 @@ default_mode = "list detect segment describe extract_features"
 input_video_path = "sample_data/"
 output_directory = "output/"
 frame_interval = 100
+image_format = "jpg"
 
 [visualization]
 enabled = false

@@ -95,32 +95,45 @@ class BatchProcessor:
         """Return number of loaded images."""
         return len(self.path_to_image)
 
-def collect_images(folder: Path) -> List[Path]:
-    """Collect JPG/JPEG/PNG images from a folder.
+def collect_images(folder: Path, image_format: str = "jpg") -> List[Path]:
+    """Collect images of a specific format from a folder.
 
     Args:
-        folder: Folder to search for images
+        folder: Folder to search for images.
+        image_format: Desired image file extension (e.g. ``"jpg"``).
 
     Returns:
-        List of image file paths
+        List of image file paths.
     """
-    patterns = ["*.jpg", "*.jpeg", "*.JPG", "*.JPEG", "*.png", "*.PNG"]
-    images = []
+    image_format = image_format.lower()
+    if image_format in {"jpg", "jpeg"}:
+        patterns = ["*.jpg", "*.jpeg", "*.JPG", "*.JPEG"]
+    else:
+        patterns = [f"*.{image_format}", f"*.{image_format.upper()}"]
+
+    images: List[Path] = []
     for pattern in patterns:
         images.extend(folder.glob(pattern))
     return sorted(images)
 
 
-def collect_images_recursive(root_dir: Path) -> List[Path]:
-    """Recursively collect all JPG/PNG images from root_dir.
+def collect_images_recursive(root_dir: Path, image_format: str = "jpg") -> List[Path]:
+    """Recursively collect images of a specific format from ``root_dir``.
 
     Args:
-        root_dir: Root directory to search recursively
+        root_dir: Root directory to search recursively.
+        image_format: Desired image file extension.
 
     Returns:
-        List of image file paths
+        List of image file paths.
     """
-    images = []
-    for pattern in ["*.jpg", "*.jpeg", "*.JPG", "*.JPEG", "*.png", "*.PNG"]:
+    image_format = image_format.lower()
+    if image_format in {"jpg", "jpeg"}:
+        patterns = ["*.jpg", "*.jpeg", "*.JPG", "*.JPEG"]
+    else:
+        patterns = [f"*.{image_format}", f"*.{image_format.upper()}"]
+
+    images: List[Path] = []
+    for pattern in patterns:
         images.extend(root_dir.rglob(pattern))
     return sorted(images)

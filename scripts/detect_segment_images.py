@@ -218,8 +218,9 @@ def process_video_folder(
     detector: ObjectDetector,
     segmenter: ObjectSegmenter,
     extra_tags: List[str] | None = None,
+    image_format: str = "jpg",
 ) -> None:
-    images = collect_images(folder)
+    images = collect_images(folder, image_format=image_format)
     if not images:
         return
 
@@ -276,6 +277,7 @@ def main() -> None:
 
     cfg = ConfigManager(config_file_path=str(args.config))
     cfg.load_config()
+    image_format = cfg.get_param("processing.image_format", "jpg")
     detector = ObjectDetector(cfg)
     segmenter = ObjectSegmenter(cfg)
 
@@ -288,10 +290,10 @@ def main() -> None:
     skipped_count = 0
 
     for sub in sorted(p for p in args.folder.iterdir() if p.is_dir()):
-        images = collect_images(sub)
+        images = collect_images(sub, image_format=image_format)
         if len(images) >= args.min_images:
             print(f"Processing video folder '{sub.name}' with {len(images)} images...")
-            process_video_folder(sub, detector, segmenter, extra_tags)
+            process_video_folder(sub, detector, segmenter, extra_tags, image_format)
             processed_count += 1
         else:
             print(
