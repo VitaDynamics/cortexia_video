@@ -241,6 +241,7 @@ dataset/
 
 - `--folder` (required): Folder containing images to process
 - `--recursive` (optional): Process subdirectories instead of the folder directly
+- `--save_format` (optional): Format to save the depth map (`npy` or `png`). Default is `npy`.
 
 #### Usage Examples
 
@@ -250,6 +251,9 @@ python scripts/batch_depth_estimation.py --folder /path/to/images
 
 # Process images in subdirectories (recommended for datasets from Stages 1-2)
 python scripts/batch_depth_estimation.py --folder /path/to/dataset --recursive
+
+# Save depth maps as PNG images
+python scripts/batch_depth_estimation.py --folder /path/to/dataset --recursive --save_format png
 ```
 
 #### Input
@@ -269,8 +273,9 @@ dataset/
 
 #### Output
 
-Creates depth map files alongside original images:
+Creates depth map files alongside original images. The output format depends on the `--save_format` argument.
 
+**NPY Output (`--save_format npy`)**
 ```
 dataset/
 ├── video_sequence_1/
@@ -280,8 +285,19 @@ dataset/
 │   ├── frame_002_depth_new.npy
 │   └── ...
 ```
+- **Depth files**: NumPy arrays (`.npy`) containing float32 depth values in meters, same resolution as input images.
 
-**Depth files**: NumPy arrays containing float32 depth values in meters, same resolution as input images.
+**PNG Output (`--save_format png`)**
+```
+dataset/
+├── video_sequence_1/
+│   ├── frame_001.jpg
+│   ├── frame_001_depth_new.png  # Generated depth map
+│   ├── frame_002.jpg
+│   ├── frame_002_depth_new.png
+│   └── ...
+```
+- **Depth files**: PNG images (`.png`) where pixel values are normalized to 0-255.
 
 ### How Batch Processing Works (`batch_processor.py`)
 
