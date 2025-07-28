@@ -76,9 +76,11 @@ def tagging_save_func(path: Path, result: Any, detectable_tags_keys: List[str]) 
     print(f"Saved tags for {path} -> {out_path}")
 
 
-def process_video_folder(folder: Path, lister, detectable_tags_keys: List[str]) -> None:
+def process_video_folder(
+    folder: Path, lister, detectable_tags_keys: List[str], image_format: str
+) -> None:
     """Annotate all images in a video folder with drivable area tags."""
-    images = collect_images(folder)
+    images = collect_images(folder, image_format=image_format)
     if not images:
         return
 
@@ -172,6 +174,7 @@ def main() -> None:
 
     cfg = ConfigManager(config_file_path=str(args.config))
     cfg.load_config()
+    image_format = cfg.get_param("processing.image_format", "jpg")
     # set custom task prompt for this task
 
     cfg.set_param("object_listing_settings.task_prompt", TASK_PROMPT)
@@ -185,10 +188,10 @@ def main() -> None:
     skipped_count = 0
 
     for sub in sorted(p for p in args.folder.iterdir() if p.is_dir()):
-        images = collect_images(sub)
+        images = collect_images(sub, image_format=image_format)
         if len(images) >= args.min_images:
             print(f"Processing video folder '{sub.name}' with {len(images)} images...")
-            process_video_folder(sub, lister, detectable_tags_keys)
+            process_video_folder(sub, lister, detectable_tags_keys, image_format)
             processed_count += 1
         else:
             print(

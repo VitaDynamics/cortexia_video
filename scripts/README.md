@@ -22,7 +22,7 @@ Many scripts in this folder share common conventions and command-line arguments.
 ### Common Command-Line Arguments
 
 *   `--config <path_to_config.toml>`: Specifies the path to a configuration file (e.g., `config/heavy_mode.toml`). This file likely contains settings for models used in tasks like object detection, segmentation, or listing.
-*   `--min-images <number>`: Used by scripts that process video folders (subfolders with sequences of images). This argument sets the minimum number of JPEG images a subfolder must contain to be processed. The default is typically 5.
+*   `--min-images <number>`: Used by scripts that process video folders (subfolders with sequences of images). This argument sets the minimum number of images (matching the configured format) a subfolder must contain to be processed. The default is typically 5.
 *   `--folder <path_to_root_folder>`: Specifies the root directory that contains subfolders of images to be processed.
 *   `--source-dir <path_to_source>`: Specifies the input directory for scripts like depth estimation. This directory can contain raw image files or ZIP archives of images.
 *   `--target-dir <path_to_target>`: Specifies the output directory where results (like extracted images from ZIPs and generated depth maps) will be stored.
@@ -43,7 +43,7 @@ Several scripts leverage `batch_processor.py` to efficiently process large numbe
 
 - `--folder` (required): Root folder containing video subfolders with images
 - `--config` (optional): Path to configuration file (default: `config/heavy_mode.toml`)
-- `--min-images` (optional): Minimum number of JPEG images required per subfolder (default: 5)
+- `--min-images` (optional): Minimum number of images (matching the configured format) required per subfolder (default: 5)
 - `--categories` (optional): JSON string defining tag categories. This allows for customized, structured tagging instead of a simple keyword list.
 
 #### Usage Examples
@@ -119,11 +119,11 @@ dataset/
 
 * `--folder <path>`: (Required) Root directory containing subfolders of images (e.g., individual video clips). Each subfolder is processed independently.
 * `--config <path>`: (Optional) Path to the configuration file specifying the captioning model. Defaults to `config/heavy_mode.toml`.
-* `--min-images <number>`: (Optional) Minimum number of JPEG images a subfolder must contain to be processed. Defaults to `5`.
+* `--min-images <number>`: (Optional) Minimum number of images (matching the configured format) a subfolder must contain to be processed. Defaults to `5`.
 
 #### Input
 
-* JPEG images stored in subfolders of the specified `--folder` directory.
+* Images (with the configured format) stored in subfolders of the specified `--folder` directory.
 
 #### Output
 
@@ -166,7 +166,7 @@ my_clips/
 
 - `--folder` (required): Root folder containing video subfolders with tagged images
 - `--config` (optional): Path to configuration file (default: `config/heavy_mode.toml`)
-- `--min-images` (optional): Minimum number of JPEG images required per subfolder (default: 5)
+- `--min-images` (optional): Minimum number of images (matching the configured format) required per subfolder (default: 5)
 - `--extra-tags-file` (optional): JSON file containing tags that will be merged with those from Stage 1 before detection. Defaults to `config/default_extra_tags.json`.
 
 #### Usage Examples
@@ -258,7 +258,7 @@ python scripts/batch_depth_estimation.py --folder /path/to/dataset --recursive -
 
 #### Input
 
-Supports JPG, JPEG, and PNG image formats:
+Supports images in the configured format (JPG by default):
 
 ```
 dataset/
@@ -312,8 +312,8 @@ The `batch_processor.py` script provides a generic framework for processing imag
 *   **Custom Functions**: Accepts custom `inference_func` (to perform the main processing task like depth estimation or tagging) and `save_func` (to store the results).
 *   **Memory Management**: Includes mechanisms to clear the image buffer and invoke garbage collection, which is important when dealing with many high-resolution images.
 *   **Image Collection Utilities**:
-    *   `collect_images(folder)`: Collects all JPG/JPEG images from a given folder (non-recursive).
-    *   `collect_images_recursive(root_dir)`: Collects all JPG/JPEG images recursively from a root directory and its subdirectories.
+    *   `collect_images(folder)`: Collects all images matching the configured format from a given folder (non-recursive).
+    *   `collect_images_recursive(root_dir)`: Collects all images matching the configured format recursively from a root directory and its subdirectories.
 
 **Usage**:
 
