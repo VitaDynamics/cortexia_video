@@ -31,6 +31,45 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Prepare Environment
+        run: |
+          curl -fsSL https://bun.sh/install | bash
+          mkdir -p $HOME/.claude-code-router
+          cat << 'EOF' > $HOME/.claude-code-router/config.json
+          {
+            "log": true,
+            "NON_INTERACTIVE_MODE": true,
+            "Providers": [
+            {
+              "name": "openrouter",
+              "api_base_url": "https://openrouter.ai/api/v1/chat/completions",
+              "api_key": "${{ secrets.OPENROUTER_API_KEY }}",
+              "models": [
+                "qwen/qwen3-coder",
+                "moonshotai/kimi-k2",
+                "z-ai/glm-4.5"
+              ],
+              "transformer": {
+                "use": ["openrouter"]
+              }
+            },
+          "Router": {
+            "default": "openrouter,moonshotai/kimi-k2",
+            "background": "openrouter,moonshotai/kimi-k2",
+            "think": "openrouter,moonshotai/kimi-k2",
+            "longContext": "openrouter,moonshotai/kimi-k2",
+            "longContextThreshold": 128000,
+            "webSearch": "openrouter,moonshotai/kimi-k2:online"
+            }
+          }
+          EOF
+        shell: bash
+
+      - name: Start Claude Code Router
+        run: |
+          nohup ~/.bun/bin/bunx @musistudio/claude-code-router@1.0.8 start &
+        shell: bash
+
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@beta
