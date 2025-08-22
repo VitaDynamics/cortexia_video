@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 
 from cortexia_video.config_manager import ConfigManager
-from cortexia_video.object_segmentation import ObjectSegmenter
+from cortexia_video.features.segmentation.models import ObjectSegmenter
 
 
 def visualize_segmentation(

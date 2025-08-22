@@ -4,7 +4,7 @@ import os
 from PIL import Image
 
 from cortexia_video.config_manager import ConfigManager
-from cortexia_video.object_listing import RAMLister
+from cortexia_video.features.listing.models import RAMLister
 
 
 def test_ram_lister(image_path=None):

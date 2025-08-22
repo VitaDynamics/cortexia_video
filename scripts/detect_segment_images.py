@@ -11,8 +11,8 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from cortexia_video.config_manager import ConfigManager
-from cortexia_video.object_detection import ObjectDetector
-from cortexia_video.object_segmentation import ObjectSegmenter
+from cortexia_video.features.detection.models import ObjectDetector
+from cortexia_video.features.segmentation.models import ObjectSegmenter
 
 try:
     import lance

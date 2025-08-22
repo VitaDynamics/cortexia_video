@@ -41,7 +41,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cortexia-video = "cortexia_video.main:main"
+cortexia-video = "cortexia_video.cli.main:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]

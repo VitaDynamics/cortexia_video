@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from batch_processor import BatchProcessor, collect_images, create_lance_load_func
 
 from cortexia_video.config_manager import ConfigManager
-from cortexia_video.parser import parse_comma_separated_string
+from cortexia_video.utils.parser import parse_comma_separated_string
 
 try:
     import lance

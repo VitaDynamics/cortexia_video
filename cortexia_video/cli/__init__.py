@@ -1,0 +1,1 @@
+"""CLI module for Cortexia Video SDK"""
