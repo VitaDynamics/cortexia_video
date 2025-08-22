@@ -2,7 +2,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Optional
 import os
 
 import numpy as np
@@ -11,10 +11,17 @@ from json_repair import repair_json
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from batch_processor import BatchProcessor, collect_images
+from batch_processor import BatchProcessor, collect_images, create_lance_load_func
 
 from cortexia_video.config_manager import ConfigManager
 from cortexia_video.parser import parse_comma_separated_string
+
+try:
+    import lance
+    import pyarrow as pa
+    LANCE_AVAILABLE = True
+except ImportError:
+    LANCE_AVAILABLE = False
 
 
 
@@ -76,10 +83,111 @@ def tagging_save_func(path: Path, result: Any, detectable_tags_keys: List[str]) 
     print(f"Saved tags for {path} -> {out_path}")
 
 
+def create_lance_tagging_save_func(lance_dataset_path: Path, all_category_keys: List[str]):
+    """Create a save function that updates Lance dataset with nested tag structure.
+    
+    Args:
+        lance_dataset_path: Path to Lance dataset
+        all_category_keys: List of all possible category keys for schema
+        
+    Returns:
+        Save function for Lance dataset updates with nested struct
+    """
+    def lance_tagging_save_func(index: int, result: Dict, detectable_tags_keys: List[str]) -> None:
+        """Save tags to Lance dataset with nested struct format.
+        
+        Args:
+            index: Row index in Lance dataset
+            result: Tagging result (parsed JSON from VLM)
+            detectable_tags_keys: List of keys for detectable tags
+        """
+        try:
+            # Open the dataset
+            dataset = lance.dataset(str(lance_dataset_path))
+            
+            # Extract detectable tags
+            detectable_tags = []
+            for key in detectable_tags_keys:
+                if key in result:
+                    detectable_tags.extend(result[key])
+            
+            # Create the nested struct with normalized field names
+            # Convert category names to valid Arrow field names (replace spaces with underscores)
+            tags_struct = {}
+            for category in all_category_keys:
+                field_name = category.replace(" ", "_").replace("-", "_")
+                tags_struct[field_name] = result.get(category, [])
+            
+            # Add detectable tags
+            tags_struct["detectable_tags"] = detectable_tags
+            
+            # Create the update data with nested struct
+            update_data = pa.table({
+                "_rowid": [index],
+                "tags": [tags_struct]
+            })
+            
+            # Merge the tags into the dataset
+            dataset = dataset.merge(
+                update_data, 
+                left_on="_rowid", 
+                right_on="_rowid"
+            )
+            
+            print(f"Saved tags for index {index}: {len(detectable_tags)} detectable tags")
+            
+        except Exception as e:
+            print(f"Failed to save tags to Lance dataset for index {index}: {e}")
+    
+    return lance_tagging_save_func
+
+
+def create_lance_tag_schema(all_category_keys: List[str]) -> pa.Schema:
+    """Create PyArrow schema for tag storage with nested struct.
+    
+    Args:
+        all_category_keys: List of all category names
+        
+    Returns:
+        PyArrow schema with nested tag structure
+    """
+    # Create struct fields for each category
+    tag_fields = []
+    for category in all_category_keys:
+        field_name = category.replace(" ", "_").replace("-", "_")
+        tag_fields.append(pa.field(field_name, pa.list_(pa.string())))
+    
+    # Add detectable_tags field
+    tag_fields.append(pa.field("detectable_tags", pa.list_(pa.string())))
+    
+    # Create the full schema
+    schema = pa.schema([
+        pa.field("_rowid", pa.int64()),  # Row identifier
+        pa.field("image", pa.binary()),  # Image data (if storing images)
+        pa.field("tags", pa.struct(tag_fields))  # Nested tag structure
+    ])
+    
+    return schema
+
+
 def process_video_folder(
-    folder: Path, lister, detectable_tags_keys: List[str], image_format: str
+    folder: Path, 
+    lister, 
+    detectable_tags_keys: List[str], 
+    image_format: str,
+    lance_dataset_path: Optional[Path] = None,
+    all_category_keys: Optional[List[str]] = None
 ) -> None:
-    """Annotate all images in a video folder with drivable area tags."""
+    """Annotate all images in a video folder with tags.
+    
+    Args:
+        folder: Folder containing images
+        lister: Object lister instance
+        detectable_tags_keys: List of keys for detectable tags
+        image_format: Image file format to process
+        lance_dataset_path: Optional path to Lance dataset for tag storage
+        all_category_keys: List of all category keys (required for Lance mode)
+    """
     images = collect_images(folder, image_format=image_format)
     if not images:
         return
@@ -87,19 +195,41 @@ def process_video_folder(
     # Initialize batch processor
     processor = BatchProcessor(batch_size=4)
 
-    # Load images into buffer
-    processor.load_images(images)
-
-    # Create inference function with lister
-    def inference_func(imgs, paths):
-        return tagging_inference_func(imgs, paths, lister)
-
-    # Process batch
-    # Create a save function with the detectable tags
-    def save_func(path, result):
-        return tagging_save_func(path, result, detectable_tags_keys)
-
-    processor.process_batch(inference_func=inference_func, save_func=save_func)
+    if lance_dataset_path and LANCE_AVAILABLE and all_category_keys:
+        # Use Lance dataset mode
+        indices = list(range(len(images)))
+        processor.load_indices(indices)
+        
+        # Create Lance-specific functions
+        lance_dataset = lance.dataset(str(lance_dataset_path))
+        load_func = create_lance_load_func(lance_dataset, image_column="image")
+        save_func = create_lance_tagging_save_func(lance_dataset_path, all_category_keys)
+        
+        def inference_func(imgs, indices):
+            return tagging_inference_func(imgs, indices, lister)
+        
+        # Create a save function wrapper with detectable tags
+        def wrapped_save_func(index, result):
+            return save_func(index, result, detectable_tags_keys)
+        
+        processor.process_batch_generic(
+            load_func=load_func,
+            inference_func=inference_func, 
+            save_func=wrapped_save_func
+        )
+    else:
+        # Use traditional path-based mode
+        processor.load_images(images)
+        
+        # Create inference function with lister
+        def inference_func(imgs, paths):
+            return tagging_inference_func(imgs, paths, lister)
+        
+        # Create a save function with the detectable tags
+        def save_func(path, result):
+            return tagging_save_func(path, result, detectable_tags_keys)
+        
+        processor.process_batch(inference_func=inference_func, save_func=save_func)
 
     # Clean up
     processor.clear_buffer()
@@ -136,6 +266,11 @@ def main() -> None:
             "Undetectable tags": ["Light and Weather"]
         }),
         help="JSON string of categories for tagging",
+    )
+    parser.add_argument(
+        "--lance-dataset",
+        type=Path,
+        help="Path to Lance dataset for tag storage (optional, defaults to JSON files)",
     )
     
     args = parser.parse_args()
@@ -191,7 +326,7 @@ def main() -> None:
         images = collect_images(sub, image_format=image_format)
         if len(images) >= args.min_images:
             print(f"Processing video folder '{sub.name}' with {len(images)} images...")
-            process_video_folder(sub, lister, detectable_tags_keys, image_format)
+            process_video_folder(sub, lister, detectable_tags_keys, image_format, args.lance_dataset, all_category_keys)
             processed_count += 1
         else:
             print(
@@ -199,9 +334,19 @@ def main() -> None:
             )
             skipped_count += 1
 
+    output_mode = "Lance dataset (nested struct)" if args.lance_dataset else "JSON files"
     print(
         f"\nSummary: Processed {processed_count} folders, skipped {skipped_count} folders"
     )
+    print(f"Output mode: {output_mode}")
+    
+    if args.lance_dataset and not LANCE_AVAILABLE:
+        print("Warning: Lance dataset path provided but lance/pyarrow not available. Used JSON mode instead.")
+    
+    if args.lance_dataset and LANCE_AVAILABLE:
+        print("\nLance schema for reference:")
+        schema = create_lance_tag_schema(all_category_keys)
+        print(schema)
 
 
 if __name__ == "__main__":

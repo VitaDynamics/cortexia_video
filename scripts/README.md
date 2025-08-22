@@ -1,5 +1,11 @@
 # Image Processing Scripts
 
+# TODO: 
+
+1. For current system, we need a layer that operate with lance, and bash process is a good abstraction. We need to let process method for fit different usage case, Lance or raw data. And aslo, we need to write this as a cli tool or open a SDK for it at least. I think SDK is good instead of CLI tool. 
+
+2. Based on batch process. We can build a layer that process things in order or not. I think we need to  desgin it as Process-independent, i.e., it involves checking the corresponding columns or requesting the SDK user to input.
+
 This document describes the usage of various Python scripts located in the `scripts` folder. These scripts are designed to process image data, focusing on tasks such as depth estimation, image tagging, object detection, and segmentation. They can be used individually or as part of a larger workflow to prepare and analyze image datasets.
 
 The scripts are generally designed to work with batches of images and often involve processing images within subfolders, treating each subfolder as a distinct dataset (e.g., frames from a video).
