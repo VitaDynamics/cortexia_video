@@ -9,10 +9,11 @@ from PIL import Image
 from ..base import BaseFeature
 from ...api.exceptions import ModelLoadError, ProcessingError
 from ...data.models.video import FrameData
+from ...data.io.lance_mixin import LanceMixin
 from .models import IMAGE_CAPTIONER_REGISTRY
 
 
-class CaptionFeature(BaseFeature):
+class CaptionFeature(BaseFeature, LanceMixin):
     """Image captioning feature using vision-language models"""
     
     def __init__(self, config=None):

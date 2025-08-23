@@ -5,6 +5,8 @@ for any type of batch inference tasks. It separates concerns between loading,
 inference, saving, and filtering operations.
 """
 
+#TODO: This is a lazy abstraction for io related things. But currently this repo do not manupilate different io I think. 
+
 import gc
 from typing import Any, Callable, List, Optional, TypeVar
 

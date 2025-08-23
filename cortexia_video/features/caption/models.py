@@ -4,6 +4,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 from transformers import AutoModelForCausalLM
+from ...core.registry import create_registry
 
 
 class ImageCaptioner(ABC):
@@ -17,7 +18,10 @@ class ImageCaptioner(ABC):
         """Return a caption describing the given image."""
         pass
 
+# Registry for captioners (decorator-friendly)
+IMAGE_CAPTIONER_REGISTRY = create_registry("image_captioner")
 
+@IMAGE_CAPTIONER_REGISTRY.decorator("vikhyatk/moondream2", aliases=["moondream2", "moon2"])
 class MoonDreamCaptioner(ImageCaptioner):
     """Captioner that uses the MoonDream2 VLM."""
 
@@ -48,9 +52,3 @@ class MoonDreamCaptioner(ImageCaptioner):
         except Exception as e:
             print(f"Error in image captioning: {e}")
             return ""
-
-
-# Registry for captioners
-IMAGE_CAPTIONER_REGISTRY = {
-    "vikhyatk/moondream2": MoonDreamCaptioner,
-}

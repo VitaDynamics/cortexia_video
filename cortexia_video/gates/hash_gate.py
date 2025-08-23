@@ -4,9 +4,9 @@ from typing import Any
 
 from PIL import Image
 
-from decimatr.gates.base_gate import BaseGate
-from decimatr.gates.image_hash import ImageHasher
-from decimatr.scheme import VideoFramePacket
+from .base_gate import BaseGate
+from .image_hash import ImageHasher
+from ..data.models.video import VideoFramePacket
 
 
 class HashGate(BaseGate[Any]):

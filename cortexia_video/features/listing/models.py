@@ -14,6 +14,7 @@ from transformers import (
     AutoProcessor,
     Qwen2_5_VLForConditionalGeneration,
 )
+from ...core.registry import create_registry
 
 # for RAM++
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "recognize-anything"))
@@ -81,6 +82,11 @@ class ObjectLister(ABC):
         pass
 
 
+# module-level registry
+OBJECT_LISTER_REGISTRY = create_registry("object_lister")
+
+
+@OBJECT_LISTER_REGISTRY.decorator("vikhyatk/moondream2", aliases=["moondream2"]) 
 class MoonDreamLister(ObjectLister):
     def __init__(self, config: dict):
         super().__init__(config)
@@ -124,6 +130,16 @@ class MoonDreamLister(ObjectLister):
             return []
 
 
+@OBJECT_LISTER_REGISTRY.decorator(
+    "Qwen/Qwen2.5-VL-3B-Instruct",
+    aliases=[
+        "Qwen/Qwen2.5-VL-72B-Instruct",
+        "Qwen/Qwen2.5-VL-7B-Instruct",
+        "Qwen2.5-VL-3B-Instruct",
+        "Qwen2.5-VL-7B-Instruct",
+        "Qwen2.5-VL-72B-Instruct",
+    ],
+)
 class Qwen2_5VLLister(ObjectLister):
     def __init__(self, config: dict):
         super().__init__(config)
@@ -257,6 +273,7 @@ class Qwen2_5VLLister(ObjectLister):
             return []
 
 
+@OBJECT_LISTER_REGISTRY.decorator("recognize_anything/ram", aliases=["ram", "recognize-anything"])
 class RAMLister(ObjectLister):
     """
     Uses Recognize Anything Model (RAM) to identify objects in images.
@@ -500,11 +517,4 @@ class RAMLister(ObjectLister):
             return []
 
 
-# Registry for object listers
-OBJECT_LISTER_REGISTRY = {
-    "vikhyatk/moondream2": MoonDreamLister,
-    "Qwen/Qwen2.5-VL-72B-Instruct": Qwen2_5VLLister,
-    "Qwen/Qwen2.5-VL-3B-Instruct": Qwen2_5VLLister,
-    "Qwen/Qwen2.5-VL-7B-Instruct": Qwen2_5VLLister,
-    "recognize_anything/ram": RAMLister,
-}
+# End: registry entries added via decorators above

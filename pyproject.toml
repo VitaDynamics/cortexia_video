@@ -38,6 +38,8 @@ dependencies = [
     "json-repair>=0.47.7",
     "python-dotenv>=1.1.1",
     "pylance>=0.33.0",
+    "imagehash>=4.3.2",
+    "pyarrow>=21.0.0",
 ]
 
 [project.scripts]

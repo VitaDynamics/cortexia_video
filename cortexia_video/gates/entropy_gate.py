@@ -4,9 +4,10 @@ from typing import Optional
 
 import numpy as np
 
-from decimatr.gates.base_gate import BaseGate
-from decimatr.scheme import VideoFramePacket
+from .base_gate import BaseGate
+from ..data.models.video import VideoFramePacket
 
+# TODO: we need to refactor logging schemas. 
 
 class EntropyGate(BaseGate[float]):
     DEFAULT_THRESHOLD = 4.0  # Class attribute for default entropy threshold

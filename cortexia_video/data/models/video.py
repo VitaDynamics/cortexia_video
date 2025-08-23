@@ -114,6 +114,25 @@ class AnnotationResults(BaseModel):
         return data
 
 
+class GateResults(BaseModel):
+    """Container for gate decision results and metadata"""
+    
+    passes: bool = True  # Whether frame passes all gates
+    gate_decisions: Dict[str, bool] = Field(default_factory=dict)  # Individual gate results
+    gate_scores: Dict[str, float] = Field(default_factory=dict)    # Gate confidence scores
+    gate_metadata: Dict[str, Any] = Field(default_factory=dict)    # Gate-specific data
+    
+    def add_gate_result(self, gate_name: str, passes: bool, score: Optional[float] = None, metadata: Optional[Dict[str, Any]] = None):
+        """Add result from a specific gate"""
+        self.gate_decisions[gate_name] = passes
+        if score is not None:
+            self.gate_scores[gate_name] = score
+        if metadata:
+            self.gate_metadata[gate_name] = metadata
+        # Update overall pass/fail
+        self.passes = self.passes and passes
+
+
 class AnnotatedFramePacket(BaseModel):
     """Frame packet with annotation results - post-processing format"""
     
@@ -134,6 +153,34 @@ class AnnotatedFramePacket(BaseModel):
     @property
     def frame_data(self) -> np.ndarray:
         return self.base_frame.frame_data
+
+
+class TaggedFramePacket(BaseModel):
+    """Frame packet with both annotations and gate results - complete processing format"""
+    
+    base_frame: VideoFramePacket
+    annotations: AnnotationResults = Field(default_factory=AnnotationResults) 
+    gate_results: GateResults = Field(default_factory=GateResults)
+    
+    class Config:
+        arbitrary_types_allowed = True
+        
+    @property  
+    def frame_number(self) -> int:
+        return self.base_frame.frame_number
+        
+    @property
+    def timestamp(self) -> datetime.timedelta:
+        return self.base_frame.timestamp
+        
+    @property
+    def frame_data(self) -> np.ndarray:
+        return self.base_frame.frame_data
+        
+    @property
+    def passes_gates(self) -> bool:
+        """Check if frame passes all gate criteria"""
+        return self.gate_results.passes
 
 
 class VideoContent(BaseModel):

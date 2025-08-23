@@ -1,29 +1,37 @@
 import numpy as np
 from PIL import Image
-from typing import Optional, List, Union, Callable
+from typing import Optional, List, Union, Callable, Dict, Any
 import torch
 import cv2
 from transformers import AutoModel
 import logging
 
 
-# TODO: need to be integrated with describer.py. 
+# TODO: integrate with describer.py (wired from describer)
 
 class ObjectDescriber:
-    def __init__(self, config_manager):
-        """Initialize the object describer with NVIDIA DAM model from config.
-        
-        Args:
-            config_manager: Instance of ConfigManager to load model config
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """Initialize the object describer with NVIDIA DAM model using dict config.
+
+        Supported config keys (all optional):
+        - 'model_settings.description_model' or 'description_model' or 'model': model id (default: 'nvidia/DAM-3B-Self-Contained')
+        - 'device': explicit device string
+        - 'description_settings.{temperature,top_p,num_beams,max_tokens}': decoding params
         """
-        self.config_manager = config_manager
+        self.config: Dict[str, Any] = config or {}
         self.logger = logging.getLogger(__name__)
-        model_name = self.config_manager.get_param('model_settings.description_model', 'nvidia/DAM-3B-Self-Contained')
+
+        model_name = (
+            self.config.get('model_settings', {}).get('description_model')
+            or self.config.get('description_model')
+            or self.config.get('model')
+            or 'nvidia/DAM-3B-Self-Contained'
+        )
+
+        device_str = self.config.get('device')
+        self.device = torch.device(device_str) if device_str else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         try:
-            # Initialize device
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            
             # Load model with proper settings
             self.model = AutoModel.from_pretrained(
                 model_name,
@@ -88,10 +96,11 @@ class ObjectDescriber:
         prompt = '<image>\nDescribe the masked region in detail.'
         
         # Load generation parameters from config or use defaults
-        temperature = self.config_manager.get_param('description_settings.temperature', 0.2)
-        top_p = self.config_manager.get_param('description_settings.top_p', 0.5)
-        num_beams = self.config_manager.get_param('description_settings.num_beams', 1)
-        max_new_tokens = self.config_manager.get_param('description_settings.max_tokens', 512)
+        ds = self.config.get('description_settings', {}) if isinstance(self.config, dict) else {}
+        temperature = ds.get('temperature', 0.2)
+        top_p = ds.get('top_p', 0.5)
+        num_beams = ds.get('num_beams', 1)
+        max_new_tokens = ds.get('max_tokens', 512)
         # Generate description
         try:
             if streaming:

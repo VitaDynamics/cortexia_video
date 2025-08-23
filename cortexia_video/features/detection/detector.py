@@ -9,10 +9,11 @@ from ..base import BaseFeature
 from ...api.exceptions import ModelLoadError, ProcessingError
 from ...data.models.detection import BoundingBox, DetectionResult
 from ...data.models.video import VideoFramePacket, AnnotationResults
+from ...data.io.lance_mixin import LanceMixin
 from .models import ObjectDetector
 
 
-class DetectionFeature(BaseFeature):
+class DetectionFeature(BaseFeature, LanceMixin):
     """Object detection feature using Grounding DINO"""
     
     def __init__(self, config=None):

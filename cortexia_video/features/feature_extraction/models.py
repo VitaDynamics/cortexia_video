@@ -4,63 +4,34 @@ import numpy as np
 from PIL import Image
 import decord
 from abc import ABC, abstractmethod
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Dict
 
-# Add path from perception_models to sys.path
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "perception_models"))
-
-import perception_models.core.vision_encoder.pe as pe
-import perception_models.core.vision_encoder.transforms as pe_transforms
-
-# TODO: need to be integrated with extractor.py 
-
-
-def preprocess_video(video_path, num_frames=8, transform=None, return_first_frame_for_demo=False):
-    """
-    Uniformly samples a specified number of frames from a video and preprocesses them.
-    
-    Parameters:
-    - video_path: str, path to the video file.
-    - num_frames: int, number of frames to sample. Defaults to 8.
-    - transform: torchvision.transforms, a transform function to preprocess frames.
-    - return_first_frame_for_demo: bool, whether to return the first frame. Defaults to False.
-    
-    Returns:
-    - Video Tensor: a tensor of shape (num_frames, 3, H, W) where H and W are the height and width of the frames.
-    - First frame (optional): the first frame as a numpy array if return_first_frame_for_demo is True.
-    """
-    # Load the video
-    vr = decord.VideoReader(video_path)
-    total_frames = len(vr)
-    # Uniformly sample frame indices
-    frame_indices = [int(i * (total_frames / num_frames)) for i in range(num_frames)]
-    frames = vr.get_batch(frame_indices).asnumpy()
-    # Preprocess frames
-    # Preprocess frames if transform is provided
-    if transform is not None:
-        preprocessed_frames = [transform(Image.fromarray(frame)) for frame in frames]
-    else:
-        # Handle case where no transform is provided (convert to tensor)
-        preprocessed_frames = [torch.from_numpy(frame).permute(2, 0, 1).float() / 255.0 for frame in frames]
-
-    first_frame = None
-    if return_first_frame_for_demo:
-        first_frame = frames[0]
-    return torch.stack(preprocessed_frames, dim=0), first_frame
+# Try importing perception_models; if not found, add likely repo path
+try:
+    import perception_models.core.vision_encoder.pe as pe
+    import perception_models.core.vision_encoder.transforms as pe_transforms
+except ModuleNotFoundError:
+    repo_root_pm = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "perception_models")
+    )
+    if repo_root_pm not in sys.path:
+        sys.path.append(repo_root_pm)
+    import perception_models.core.vision_encoder.pe as pe
+    import perception_models.core.vision_encoder.transforms as pe_transforms
 
 
 class FeatureExtractor(ABC):
     """
     Abstract base class for feature extraction from images and videos.
     """
-    def __init__(self, config_manager: Any):
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
-        Initialize the FeatureExtractor with configuration manager.
-        
+        Initialize the FeatureExtractor with a configuration dict.
+
         Args:
-            config_manager: Instance of ConfigManager to get model settings
+            config: Plain dict of configuration values
         """
-        self.config_manager = config_manager
+        self.config: Dict[str, Any] = config or {}
 
     @abstractmethod
     def extract_image_features(self, images_data: List[Image.Image]) -> torch.Tensor:
@@ -108,16 +79,24 @@ class CLIPFeatureExtractor(FeatureExtractor):
     """
     CLIP-based feature extractor for images and videos.
     """
-    def __init__(self, config_manager: Any):
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
-        Initialize the CLIPFeatureExtractor with configuration manager.
-        
-        Args:
-            config_manager: Instance of ConfigManager to get model settings
+        Initialize the CLIPFeatureExtractor with configuration dict.
+
+        Expected config keys (all optional):
+        - 'model_settings.clip_feature_model' or 'clip_feature_model' or 'model': model identifier for PE CLIP
+        - 'device': explicit device string
         """
-        super().__init__(config_manager)
-        model_name = config_manager.get_param('model_settings.clip_feature_model')
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        super().__init__(config)
+        # Resolve model name from multiple possible keys to preserve compatibility
+        model_name = (
+            self.config.get('model_settings', {}).get('clip_feature_model')
+            or self.config.get('clip_feature_model')
+            or self.config.get('model')
+            or "PE-Core-L14-336"
+        )
+        device_str = self.config.get("device")
+        self.device = torch.device(device_str) if device_str else torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = pe.CLIP.from_config(model_name, pretrained=True)
         self.model.to(self.device)
         self.image_preprocess = pe_transforms.get_image_transform(self.model.image_size)
@@ -163,26 +142,6 @@ class CLIPFeatureExtractor(FeatureExtractor):
         
         return batch_features
 
-    def extract_video_features(self, video_path: str, num_frames: int = 8) -> torch.Tensor:
-        """
-        Extract features from a video using CLIP.
-        
-        Args:
-            video_path: Path to the video file
-            num_frames: Number of frames to sample. Defaults to 8.
-            
-        Returns:
-            torch.Tensor: Extracted video features
-        """
-        video_frames, _ = preprocess_video(
-            video_path, 
-            num_frames=num_frames, 
-            transform=self.image_preprocess
-        )
-        video_inputs = video_frames.unsqueeze(0).to(self.device)
-        with torch.no_grad():
-            video_features = self.model.encode_video(video_inputs)
-        return video_features
 
     def extract_text_features(self, text_prompts: List[str]) -> torch.Tensor:
         """

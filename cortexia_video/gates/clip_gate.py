@@ -7,9 +7,9 @@ from typing import Optional, List
 import numpy as np
 from PIL import Image
 
-from decimatr.gates.base_gate import BaseGate
-from decimatr.scheme import VideoFramePacket
-from decimatr.samplers.clip_utils import get_image_embeddings
+from .base_gate import BaseGate
+from ..data.models.video import VideoFramePacket
+from .clip_utils import get_image_embeddings
 
 
 class ClipGate(BaseGate[float]):

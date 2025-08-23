@@ -3,7 +3,7 @@
 import os
 from typing import Any, Dict, List, Optional, Type, Union
 
-from ..core.registry import FeatureRegistry
+from ..core.registry import 
 from ..core.config.manager import ConfigManager
 from .exceptions import CortexiaError, FeatureNotFoundError
 

@@ -1,67 +1,297 @@
 from abc import ABC, abstractmethod
-from typing import List, Iterator, Optional, TypeVar, Generic, Union
+from pathlib import Path
+from typing import Dict, List, Iterator, Optional, Type, TypeVar, Generic, Union, Callable
 
-from decimatr.scheme import VideoFramePacket
+from ..data.models.video import VideoFramePacket, AnnotatedFramePacket, TaggedFramePacket, GateResults
+from ..data.models.base_result import BaseResult
+from ..data.models.gate_result import GateResult
+from ..data.io.generic_lance_mixin import GenericLanceMixin
 
 # Type variable for return type of process_frame
-T = TypeVar('T')
+T = TypeVar('T', bound=BaseResult)
 
-class BaseGate(Generic[T], ABC):
+# Input types for gates - can handle raw, annotated, or tagged frames  
+FrameInput = Union[VideoFramePacket, AnnotatedFramePacket, TaggedFramePacket]
+
+
+class BaseGate(GenericLanceMixin, Generic[T], ABC):
     """
     Abstract base class for all gate implementations.
     
     Gates are responsible for deciding whether frames should pass through
     or be filtered out, typically by analyzing frame content and returning a boolean.
+    
+    Enhanced to support unified data flow with schema-based results and
+    I/O capabilities for dataset integration.
     """
     
-    @abstractmethod
-    def process_frame(self, packet: VideoFramePacket) -> Union[bool, T]:
+    # Class attributes that subclasses should define
+    output_schema: Type[BaseResult] = GateResult  # Default to GateResult
+    required_inputs: List[str] = []  # List of required input schema names
+    
+    def __init__(self):
+        """Initialize the gate with I/O capabilities."""
+        super().__init__()  # Initialize GenericLanceMixin
+        
+        # Validate that subclass defined required attributes appropriately
+        if self.__class__.output_schema is None:
+            raise ValueError(f"{self.__class__.__name__} must define output_schema class attribute")
+    
+    def get_output_schema(self) -> Type[BaseResult]:
+        """Get the output schema class for this gate."""
+        return self.__class__.output_schema
+    
+    def get_required_inputs(self) -> List[str]:
+        """Get the list of required input schema names."""
+        return self.__class__.required_inputs.copy()
+    
+    def validate_inputs(self, **inputs) -> None:
         """
-        Process a single video frame packet to determine if it should pass through the gate.
+        Validate that all required inputs are provided.
         
         Args:
-            packet (VideoFramePacket): The frame packet containing the frame data and metadata
+            **inputs: Input data with schema names as keys
+            
+        Raises:
+            ProcessingError: If required inputs are missing
+        """
+        from ..api.exceptions import ProcessingError
+        
+        missing_inputs = []
+        for required_input in self.required_inputs:
+            if required_input not in inputs:
+                missing_inputs.append(required_input)
+        
+        if missing_inputs:
+            raise ProcessingError(
+                f"Gate {self.name} missing required inputs: {missing_inputs}. "
+                f"Provided: {list(inputs.keys())}"
+            )
+    
+    @property
+    def name(self) -> str:
+        """Gate name for identification in results"""
+        return self.__class__.__name__
+    
+    @abstractmethod
+    def process_frame(self, frame: FrameInput, **inputs) -> T:
+        """
+        Process a single frame to determine if it should pass through the gate.
+        
+        Args:
+            frame: Frame to process (VideoFramePacket, AnnotatedFramePacket, or TaggedFramePacket)
+            **inputs: Additional inputs keyed by schema name (e.g., CaptionResult="caption_result")
             
         Returns:
-            Union[bool, T]: True if the frame passes the gate criteria, False if it should be filtered.
-                           Implementations may return additional data of type T.
+            BaseResult instance (typically GateResult) containing gate decision and metadata
         """
         pass
     
-    def process(self, packets: List[VideoFramePacket]) -> List[Union[bool, T]]:
+    def process_batch(self, frames: List[FrameInput], **batch_inputs) -> List[T]:
         """
-        Process a list of video frame packets.
+        Process multiple frames through the gate.
+        
+        Default implementation processes frames one by one.
+        Override for batch-specific optimizations.
         
         Args:
-            packets (List[VideoFramePacket]): List of frame packets to process
+            frames: List of frames to process
+            **batch_inputs: Batch inputs keyed by schema name
             
         Returns:
-            List[Union[bool, T]]: List of results from processing each frame
+            List of BaseResult instances
         """
-        return [self.process_frame(packet) for packet in packets]
+        # Validate inputs once for the batch
+        self.validate_inputs(**batch_inputs)
+        
+        results = []
+        for frame in frames:
+            result = self.process_frame(frame, **batch_inputs)
+            results.append(result)
+        return results
     
-    def process_iter(self, packets: Iterator[VideoFramePacket]) -> Iterator[Union[bool, T]]:
+    # Legacy compatibility methods for old TaggedFramePacket workflow
+    
+    def legacy_process_frame(self, packet: FrameInput) -> bool:
         """
-        Process an iterator of video frame packets.
+        Legacy method that returns boolean for backwards compatibility.
+        
+        This calls the new process_frame method and extracts the boolean result.
+        """
+        result = self.process_frame(packet)
+        if isinstance(result, GateResult):
+            return result.passes
+        elif hasattr(result, 'passes'):
+            return result.passes
+        else:
+            # Fallback - assume any truthy result means pass
+            return bool(result)
+    
+    # Schema-based I/O Methods (similar to BaseFeature)
+    
+    def process_from_dataset(
+        self,
+        input_dataset_path: Union[str, Path],
+        output_dataset_path: Union[str, Path],
+        input_datasets: Optional[Dict[str, Union[str, Path]]] = None,
+        filter_expr: Optional[str] = None,
+        batch_size: int = 32,
+        save_mode: str = "append"
+    ) -> None:
+        """
+        Process frames from dataset through gate to produce gate results.
         
         Args:
-            packets (Iterator[VideoFramePacket]): Iterator of frame packets to process
-            
-        Returns:
-            Iterator[Union[bool, T]]: Iterator of results from processing each frame
+            input_dataset_path: Path to video frames dataset
+            output_dataset_path: Path to save gate results dataset
+            input_datasets: Dict mapping input schema names to dataset paths
+            filter_expr: Filter expression for frame selection
+            batch_size: Number of frames to process in each batch
+            save_mode: Save mode for results ("append", "overwrite", "create")
         """
-        for packet in packets:
-            yield self.process_frame(packet)
+        from ..api.exceptions import ProcessingError
+        
+        # Load additional input data if required
+        input_data = {}
+        if self.required_inputs and input_datasets:
+            for input_name in self.required_inputs:
+                if input_name not in input_datasets:
+                    raise ProcessingError(f"Required input dataset '{input_name}' not provided")
+                
+                # Load input data
+                input_schema_class = self._resolve_schema_class(input_name)
+                input_data[input_name] = list(self.load_results_from_lance(
+                    input_datasets[input_name], 
+                    input_schema_class
+                ))
+        
+        # Process frames in batches
+        batch = []
+        results = []
+        
+        for frame in self.load_video_frames_from_lance(input_dataset_path, filter_expr):
+            batch.append(frame)
             
-    def __call__(self, packet: VideoFramePacket) -> Union[bool, T]:
+            if len(batch) >= batch_size:
+                try:
+                    # Process batch
+                    batch_results = self.process_batch(batch, **input_data)
+                    results.extend(batch_results)
+                    
+                    # Save results periodically
+                    if len(results) >= batch_size:
+                        self.save_results_to_lance(results, output_dataset_path, "append" if results else save_mode)
+                        results = []
+                        
+                except Exception as e:
+                    print(f"Error processing batch through gate {self.name}: {e}")
+                finally:
+                    batch = []
+        
+        # Process remaining frames
+        if batch:
+            try:
+                batch_results = self.process_batch(batch, **input_data)
+                results.extend(batch_results)
+            except Exception as e:
+                print(f"Error processing final batch through gate {self.name}: {e}")
+        
+        # Save remaining results
+        if results:
+            self.save_results_to_lance(results, output_dataset_path, "append" if Path(output_dataset_path).exists() else save_mode)
+    
+    def _resolve_schema_class(self, schema_name: str) -> Type[BaseResult]:
         """
-        Makes the gate callable, delegating to process_frame.
-        This ensures backward compatibility with existing code that expects gates to be callable.
+        Resolve schema name to schema class.
+        
+        This is the same implementation as in BaseFeature.
+        In production, you'd want a shared registry system.
+        """
+        schema_mapping = {
+            "CaptionResult": "caption_result.CaptionResult",
+            "TaggingResult": "tagging_result.TaggingResult", 
+            "DetectionResult": "detection.DetectionResult",
+            "SegmentationResult": "segmentation.SegmentationResult",
+            "DepthResult": "depth_result.DepthResult",
+            "FeatureExtractionResult": "feature_extraction_result.FeatureExtractionResult",
+            "DescriptionResult": "description_result.DescriptionResult",
+            "GateResult": "gate_result.GateResult",
+        }
+        
+        if schema_name not in schema_mapping:
+            raise ValueError(f"Unknown schema name: {schema_name}")
+        
+        # Import and return the class
+        module_path, class_name = schema_mapping[schema_name].rsplit(".", 1)
+        module = __import__(f"..data.models.{module_path}", fromlist=[class_name], level=2)
+        return getattr(module, class_name)
+    
+    def filter_dataset_by_gate(
+        self,
+        input_dataset_path: Union[str, Path],
+        output_dataset_path: Union[str, Path],
+        passing_only: bool = True,
+        **inputs
+    ) -> Dict[str, int]:
+        """
+        Filter dataset based on gate results.
         
         Args:
-            packet (VideoFramePacket): The frame packet to process
+            input_dataset_path: Path to gate results dataset
+            output_dataset_path: Path to filtered output dataset
+            passing_only: If True, save only passing results
+            **inputs: Additional inputs for gate evaluation
             
         Returns:
-            Union[bool, T]: The result from process_frame
+            Dictionary with filtering statistics
         """
-        return self.process_frame(packet)
+        total_results = 0
+        passing_results = 0
+        failing_results = 0
+        filtered_results = []
+        
+        # Load and filter gate results
+        for gate_result in self.load_results_from_lance(input_dataset_path, self.output_schema):
+            total_results += 1
+            
+            if hasattr(gate_result, 'passes'):
+                passes = gate_result.passes
+            else:
+                passes = bool(gate_result)
+            
+            if passes:
+                passing_results += 1
+                if not passing_only:  # Save all, or save only passing
+                    filtered_results.append(gate_result)
+            else:
+                failing_results += 1
+                if passing_only:  # Save all, or save only failing
+                    filtered_results.append(gate_result)
+        
+        # Save filtered results
+        if filtered_results:
+            self.save_results_to_lance(filtered_results, output_dataset_path, "create")
+        
+        return {
+            "total_results": total_results,
+            "passing_results": passing_results,
+            "failing_results": failing_results,
+            "pass_rate": passing_results / total_results if total_results > 0 else 0.0
+        }
+    
+    # Legacy compatibility for callable gates
+    
+    def __call__(self, packet: FrameInput) -> bool:
+        """
+        Makes the gate callable for backwards compatibility.
+        
+        This calls legacy_process_frame to maintain boolean return type
+        that existing code expects.
+        
+        Args:
+            packet: Frame packet to process
+            
+        Returns:
+            Boolean result for gate decision
+        """
+        return self.legacy_process_frame(packet)

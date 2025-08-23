@@ -9,6 +9,7 @@ from PIL import Image
 from ..base import BaseFeature
 from ...api.exceptions import ModelLoadError, ProcessingError
 from ...data.models.video import FrameData
+from .models import CLIPFeatureExtractor
 
 
 class FeatureExtractionFeature(BaseFeature):
@@ -16,35 +17,16 @@ class FeatureExtractionFeature(BaseFeature):
     
     def __init__(self, config=None):
         super().__init__(config)
-        self.model = None
-        self.processor = None
-        self.device = None
+        self.engine = None  # Backend from models.py (PE-only path)
     
     def _initialize(self):
         """Initialize feature extraction model"""
         try:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            
-            # Get model configuration
-            model_name = self.get_config_param(
-                "model", 
-                "openai/clip-vit-base-patch32"
-            )
-            
-            # Initialize model and processor
-            self._initialize_clip_model(model_name)
-            
+            # Initialize PE engine (no fallback)
+            self.engine = CLIPFeatureExtractor(self.config)
             self.initialized = True
-            
         except Exception as e:
-            raise ModelLoadError(f"Failed to initialize feature extraction model: {e}")
-    
-    def _initialize_clip_model(self, model_name: str):
-        """Initialize CLIP model"""
-        from transformers import CLIPModel, CLIPProcessor
-        
-        self.model = CLIPModel.from_pretrained(model_name).to(self.device)
-        self.processor = CLIPProcessor.from_pretrained(model_name)
+            raise ModelLoadError(f"Failed to initialize PE feature extraction engine: {e}")
     
     @property
     def name(self) -> str:
@@ -148,24 +130,11 @@ class FeatureExtractionFeature(BaseFeature):
         Returns:
             Scene feature vector
         """
-        # Process image
-        inputs = self.processor(
-            images=image,
-            return_tensors="pt",
-            padding=True
-        )
-        
-        # Move to device
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        
-        # Extract features
-        with torch.no_grad():
-            outputs = self.model.get_image_features(**inputs)
-            # Normalize features
-            features = outputs / outputs.norm(p=2, dim=-1, keepdim=True)
-        
-        # Convert to numpy array
-        return features.cpu().numpy().flatten()
+        # Use PE engine only
+        feats = self.engine.extract_image_features([image])  # Tensor [1, D]
+        if isinstance(feats, torch.Tensor):
+            feats = feats.cpu().numpy()
+        return np.asarray(feats)[0].flatten()
     
     def _extract_scene_features_batch(self, images: List[Image.Image]) -> List[np.ndarray]:
         """
@@ -177,24 +146,11 @@ class FeatureExtractionFeature(BaseFeature):
         Returns:
             List of scene feature vectors
         """
-        # Process batch
-        inputs = self.processor(
-            images=images,
-            return_tensors="pt",
-            padding=True
-        )
-        
-        # Move to device
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        
-        # Extract features
-        with torch.no_grad():
-            outputs = self.model.get_image_features(**inputs)
-            # Normalize features
-            features = outputs / outputs.norm(p=2, dim=-1, keepdim=True)
-        
-        # Convert to numpy arrays
-        return [f.cpu().numpy().flatten() for f in features]
+        # Use PE engine only
+        feats = self.engine.extract_image_features(images)  # Tensor [N, D]
+        if isinstance(feats, torch.Tensor):
+            feats = feats.cpu().numpy()
+        return [np.asarray(f).flatten() for f in feats]
     
     def _extract_object_features(self, image: Image.Image, detections: List) -> List[np.ndarray]:
         """

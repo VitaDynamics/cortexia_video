@@ -5,10 +5,11 @@ from typing import Optional
 import numpy as np
 from pydantic import BaseModel, Field
 
+from .base_result import BaseResult
 from .detection import BoundingBox
 
 
-class SegmentationResult(BaseModel):
+class SegmentationResult(BaseResult):
     """Result of image segmentation with area and label information"""
 
     mask: np.ndarray
@@ -18,12 +19,42 @@ class SegmentationResult(BaseModel):
     bbox: BoundingBox
     detection_id: Optional[str] = None
 
-    class Config:
-        arbitrary_types_allowed = True
+    def _get_repr_fields(self) -> str:
+        """Show key segmentation fields."""
+        fields = []
+        fields.append(f"label='{self.label}'")
+        fields.append(f"score={self.score:.3f}")
+        fields.append(f"area={self.area}")
+        if hasattr(self, 'mask') and self.mask is not None:
+            fields.append(f"mask.shape={self.mask.shape}")
+        return ", ".join(fields)
 
-    def dict(self, **kwargs):
-        """Override dict method to handle numpy arrays"""
-        data = super().dict(**kwargs)
-        # Skip mask in serialization
-        data["mask"] = None
-        return data
+    @classmethod
+    def from_dict(cls, data: dict) -> "SegmentationResult":
+        """Reconstruct from dictionary."""
+        # Handle bbox conversion
+        bbox_data = data["bbox"]
+        if isinstance(bbox_data, dict):
+            bbox = BoundingBox(**bbox_data)
+        else:
+            # Assume list format
+            bbox = BoundingBox(
+                xmin=bbox_data[0],
+                ymin=bbox_data[1],
+                xmax=bbox_data[2], 
+                ymax=bbox_data[3]
+            )
+        
+        # Use base class deserialization for numpy arrays
+        deserialized_data = cls._deserialize_special_types(data)
+        
+        # Override with specific conversions  
+        deserialized_data.update({
+            "score": data["score"],
+            "label": data["label"],
+            "area": data["area"],
+            "bbox": bbox,
+            "detection_id": data.get("detection_id"),
+        })
+        
+        return cls(**deserialized_data)

@@ -4,8 +4,8 @@ import uuid
 import imagehash
 from PIL import Image
 
-from decimatr.gates.base_gate import BaseGate
-from decimatr.scheme import VideoFramePacket
+from .base_gate import BaseGate
+from ..data.models.video import VideoFramePacket
 
 
 class GridGate(BaseGate[str]):

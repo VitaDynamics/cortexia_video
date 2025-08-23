@@ -5,8 +5,8 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from decimatr.gates.base_gate import BaseGate
-from decimatr.scheme import VideoFramePacket
+from .base_gate import BaseGate
+from ..data.models.video import VideoFramePacket
 
 
 class BlurGate(BaseGate[float]):

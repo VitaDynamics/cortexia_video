@@ -9,10 +9,11 @@ from PIL import Image
 from ..base import BaseFeature
 from ...api.exceptions import ModelLoadError, ProcessingError
 from ...data.models.video import FrameData
+from ...data.io.lance_mixin import LanceMixin
 from .models import DepthProEstimator
 
 
-class DepthFeature(BaseFeature):
+class DepthFeature(BaseFeature, LanceMixin):
     """Depth estimation feature using transformer-based models"""
     
     def __init__(self, config: dict = None):
