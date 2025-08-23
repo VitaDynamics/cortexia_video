@@ -8,7 +8,7 @@ from PIL import Image
 from ..base import BaseFeature
 from ...api.exceptions import ModelLoadError, ProcessingError
 from ...data.models.detection import BoundingBox, DetectionResult
-from ...data.models.video import FrameData
+from ...data.models.video import VideoFramePacket, AnnotationResults
 from .models import ObjectDetector
 
 
@@ -48,28 +48,28 @@ class DetectionFeature(BaseFeature):
     def description(self) -> str:
         return "Object detection using Grounding DINO model"
     
-    def process_frame(self, frame_data: FrameData) -> FrameData:
+    def process_frame(self, frame_packet: VideoFramePacket) -> AnnotationResults:
         """
         Process a single frame for object detection.
         
         Args:
-            frame_data: Frame data containing RGB image
+            frame_packet: VideoFramePacket containing RGB frame data
             
         Returns:
-            Frame data with detection results added
+            AnnotationResults with detection results
         """
         if not self.is_ready():
             raise ProcessingError("Detection feature not initialized")
         
-        if frame_data.rgb_image is None:
-            return frame_data
+        if frame_packet.frame_data is None or frame_packet.frame_data.size == 0:
+            return AnnotationResults()
         
         try:
             # Convert numpy array to PIL Image
-            image = Image.fromarray(frame_data.rgb_image)
+            image = Image.fromarray(frame_packet.frame_data)
             
-            # Get detection prompts
-            prompts = self._get_detection_prompts(frame_data)
+            # Get detection prompts from metadata
+            prompts = self._get_detection_prompts(frame_packet)
             
             # Run detection using ObjectDetector
             detection_results = self.detector.detect_objects([image], [prompts])
@@ -77,71 +77,80 @@ class DetectionFeature(BaseFeature):
             # Convert to DetectionResult objects
             detections = self._convert_to_detection_results(detection_results[0])
             
-            # Add detections to frame data
-            frame_data.detections = detections
-            
-            return frame_data
+            # Return annotation results
+            return AnnotationResults(detections=detections)
             
         except Exception as e:
             raise ProcessingError(f"Error in detection processing: {e}")
     
-    def process_batch(self, frames: List[FrameData]) -> List[FrameData]:
+    def process_batch(self, frame_packets: List[VideoFramePacket]) -> List[AnnotationResults]:
         """
         Process multiple frames for object detection.
         
         Args:
-            frames: List of frame data objects
+            frame_packets: List of VideoFramePacket objects
             
         Returns:
-            List of frame data with detection results added
+            List of AnnotationResults with detection results
         """
         if not self.is_ready():
             raise ProcessingError("Detection feature not initialized")
         
-        # Filter frames with RGB images
-        valid_frames = [f for f in frames if f.rgb_image is not None]
+        # Filter frames with valid data
+        valid_packets = [f for f in frame_packets if f.frame_data is not None and f.frame_data.size > 0]
         
-        if not valid_frames:
-            return frames
+        if not valid_packets:
+            return [AnnotationResults() for _ in frame_packets]
         
         try:
             # Convert to PIL Images
-            images = [Image.fromarray(f.rgb_image) for f in valid_frames]
+            images = [Image.fromarray(f.frame_data) for f in valid_packets]
             
             # Get prompts for each frame
-            all_prompts = [self._get_detection_prompts(f) for f in valid_frames]
+            all_prompts = [self._get_detection_prompts(f) for f in valid_packets]
             
             # Run batch detection
             batch_detection_results = self.detector.detect_objects(images, all_prompts)
             
-            # Convert and add results back to frames
-            for i, frame in enumerate(valid_frames):
-                if i < len(batch_detection_results):
-                    detections = self._convert_to_detection_results(batch_detection_results[i])
-                    frame.detections = detections
+            # Convert results
+            results = []
+            valid_idx = 0
+            for packet in frame_packets:
+                if packet.frame_data is not None and packet.frame_data.size > 0:
+                    if valid_idx < len(batch_detection_results):
+                        detections = self._convert_to_detection_results(batch_detection_results[valid_idx])
+                        results.append(AnnotationResults(detections=detections))
+                        valid_idx += 1
+                    else:
+                        results.append(AnnotationResults())
+                else:
+                    results.append(AnnotationResults())
             
-            return frames
+            return results
             
         except Exception as e:
             raise ProcessingError(f"Error in batch detection processing: {e}")
     
-    def _get_detection_prompts(self, frame_data: FrameData) -> List[str]:
+    def _get_detection_prompts(self, frame_packet: VideoFramePacket) -> List[str]:
         """
         Get detection prompts for frame.
         
         Args:
-            frame_data: Frame data object
+            frame_packet: VideoFramePacket object
             
         Returns:
             List of detection prompts
         """
+        # Check metadata for prompts
+        metadata = frame_packet.additional_metadata
+        
         # Use lister results if available
-        if hasattr(frame_data, 'lister_results') and frame_data.lister_results:
-            return frame_data.lister_results
+        if 'lister_results' in metadata and metadata['lister_results']:
+            return metadata['lister_results']
         
         # Use dino prompt if available
-        if hasattr(frame_data, 'dino_prompt') and frame_data.dino_prompt:
-            return frame_data.dino_prompt.split(".")
+        if 'dino_prompt' in metadata and metadata['dino_prompt']:
+            return metadata['dino_prompt'].split(".")
         
         # Default prompts
         return self.get_config_param("default_prompts", ["object"])
@@ -166,7 +175,7 @@ class DetectionFeature(BaseFeature):
             detection = DetectionResult(
                 score=score,
                 label=label,
-                bbox=BoundingBox(xmin=box[0], ymin=box[1], xmax=box[2], ymax=box[3])
+                box=BoundingBox(xmin=box[0], ymin=box[1], xmax=box[2], ymax=box[3])
             )
             
             detections.append(detection)

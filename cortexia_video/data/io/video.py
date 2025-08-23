@@ -1,11 +1,12 @@
 """Video I/O utilities for processing video files"""
 
 import cv2
+import datetime
 import numpy as np
 from pathlib import Path
 from typing import Generator, Optional, Tuple, Union
 
-from ..data.models.video import FrameData, VideoContent
+from ..models.video import VideoFramePacket, VideoContent
 
 
 class VideoLoader:
@@ -68,7 +69,7 @@ class VideoLoader:
             self._extract_video_info()
         return self.video_info.copy()
     
-    def read_frame(self, frame_number: Optional[int] = None) -> Optional[FrameData]:
+    def read_frame(self, frame_number: Optional[int] = None) -> Optional[VideoFramePacket]:
         """
         Read a specific frame or next frame.
         
@@ -76,7 +77,7 @@ class VideoLoader:
             frame_number: Specific frame number to read, or None for next frame
             
         Returns:
-            FrameData object or None if no more frames
+            VideoFramePacket object or None if no more frames
         """
         if self.cap is None:
             raise RuntimeError("Video not opened")
@@ -92,17 +93,18 @@ class VideoLoader:
         # Get current frame number
         current_frame = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES)) - 1
         
-        # Calculate timestamp
+        # Calculate timestamp as timedelta
         fps = self.video_info["fps"]
-        timestamp = current_frame / fps if fps > 0 else 0.0
+        timestamp_seconds = current_frame / fps if fps > 0 else 0.0
         
         # Convert BGR to RGB
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
-        return FrameData(
+        return VideoFramePacket(
+            frame_data=rgb_frame,
             frame_number=current_frame,
-            timestamp=timestamp,
-            rgb_image=rgb_frame
+            timestamp=datetime.timedelta(seconds=timestamp_seconds),
+            source_video_id=self.video_path
         )
     
     def frame_generator(
@@ -110,7 +112,7 @@ class VideoLoader:
         start_frame: int = 0, 
         end_frame: Optional[int] = None,
         step: int = 1
-    ) -> Generator[FrameData, None, None]:
+    ) -> Generator[VideoFramePacket, None, None]:
         """
         Generate frames from video.
         
@@ -120,7 +122,7 @@ class VideoLoader:
             step: Frame step (1 for every frame, 2 for every other, etc.)
             
         Yields:
-            FrameData objects
+            VideoFramePacket objects
         """
         if self.cap is None:
             raise RuntimeError("Video not opened")
@@ -167,8 +169,14 @@ class VideoLoader:
         )
         
         # Load all frames
-        for frame_data in self.frame_generator():
-            video_content.frames[frame_data.frame_number] = frame_data
+        for frame_packet in self.frame_generator():
+            from ..models.video import AnnotatedFramePacket, AnnotationResults
+            # Convert VideoFramePacket to AnnotatedFramePacket for storage
+            annotated_frame = AnnotatedFramePacket(
+                base_frame=frame_packet,
+                annotations=AnnotationResults()
+            )
+            video_content.frames[frame_packet.frame_number] = annotated_frame
         
         return video_content
 
@@ -312,14 +320,14 @@ def extract_frames_from_video(
     saved_paths = []
     
     with VideoLoader(video_path) as loader:
-        for frame_data in loader.frame_generator(start_frame, end_frame, step):
+        for frame_packet in loader.frame_generator(start_frame, end_frame, step):
             # Generate output filename
-            frame_filename = f"frame_{frame_data.frame_number:06d}.{frame_format}"
+            frame_filename = f"frame_{frame_packet.frame_number:06d}.{frame_format}"
             frame_path = output_dir / frame_filename
             
             # Save frame
             VideoSaver.save_frame_as_image(
-                frame_data.rgb_image,
+                frame_packet.frame_data,
                 frame_path,
                 quality
             )

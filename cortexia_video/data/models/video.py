@@ -1,6 +1,8 @@
 """Video data models"""
 
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
+import datetime
 
 import numpy as np
 from pydantic import BaseModel, Field
@@ -9,52 +11,140 @@ from .detection import DetectionResult
 from .segmentation import SegmentationResult
 
 
-class FrameData(BaseModel):
-    """Enhanced frame data with detection and segmentation results"""
+@dataclass
+class VideoFramePacket:
+    """
+    Standardized data packet for a single video frame and its metadata.
+    This structure will be used for passing frame data between samplers,
+    gates, buffers, and other processing modules.
+    """
 
-    frame_number: int
-    timestamp: float
-    rgb_image: Optional[np.ndarray] = None
-    rgb_path: Optional[str] = None
-    depth_image: Optional[np.ndarray] = None
-    lister_results: Optional[list[str]] = None
+    frame_data: np.ndarray  # The raw frame image data as a NumPy array (from decord)
+    frame_number: (
+        int  # Sequential frame number within the source video (0-indexed or 1-indexed)
+    )
+    timestamp: datetime.timedelta  # Timestamp of the frame relative to the video start
+    source_video_id: str  # A unique identifier for the source video file or stream
+
+    additional_metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        if not isinstance(self.frame_data, np.ndarray):
+            raise TypeError(
+                f"frame_data must be a NumPy array, got {type(self.frame_data)}"
+            )
+        if not (
+            self.frame_data.ndim == 3 and self.frame_data.shape[2] in [1, 3, 4]
+        ) and not (self.frame_data.ndim == 2):  # (H, W, C) or (H, W)
+            raise ValueError(
+                "frame_data must be a 2D (grayscale) or 3D (e.g., RGB, RGBA) NumPy array. "
+                f"Received shape: {self.frame_data.shape}"
+            )
+        if not isinstance(self.frame_number, int) or self.frame_number < 0:
+            raise ValueError(
+                f"frame_number must be a non-negative integer, got {self.frame_number}"
+            )
+        if not isinstance(self.timestamp, datetime.timedelta):
+            raise TypeError(
+                f"timestamp must be a datetime.timedelta, got {type(self.timestamp)}"
+            )
+        if (
+            not isinstance(self.source_video_id, str)
+            or not self.source_video_id.strip()
+        ):
+            raise ValueError(
+                f"source_video_id must be a non-empty string, got '{self.source_video_id}'"
+            )
+        if not isinstance(self.additional_metadata, dict):
+            raise TypeError(
+                f"additional_metadata must be a dict, got {type(self.additional_metadata)}"
+            )
+
+    def __eq__(self, other):
+        """
+        Compare two VideoFramePacket objects for equality.
+
+        Args:
+            other: Another object to compare with
+
+        Returns:
+            bool: True if objects are equal, False otherwise
+        """
+        if not isinstance(other, VideoFramePacket):
+            return False
+
+        # Compare all fields except frame_data which is a numpy array
+        fields_equal = (
+            self.frame_number == other.frame_number
+            and self.timestamp == other.timestamp
+            and self.source_video_id == other.source_video_id
+            and self.additional_metadata == other.additional_metadata
+        )
+
+        # Compare the numpy arrays
+        arrays_equal = np.array_equal(self.frame_data, other.frame_data)
+
+        return fields_equal and arrays_equal
+
+
+class AnnotationResults(BaseModel):
+    """Container for all annotation results from features"""
+    
     detections: list[DetectionResult] = Field(default_factory=list)
     segments: list[SegmentationResult] = Field(default_factory=list)
     features: Dict[str, Any] = Field(default_factory=dict)
+    
+    # Specific feature results
+    lister_results: Optional[list[str]] = None
     dino_prompt: Optional[str] = None
-
-    # clip features
     scene_clip_features: Optional[np.ndarray] = None
-    
-    # image caption
     caption: Optional[str] = None
-    
-    # depth estimation results
     depth_map: Optional[np.ndarray] = None
     depth_statistics: Optional[Dict[str, float]] = None
-
+    
     class Config:
         arbitrary_types_allowed = True
 
     def dict(self, **kwargs):
         """Override dict method to handle numpy arrays"""
         data = super().dict(**kwargs)
-        # Skip image data in serialization
-        data["rgb_image"] = None
-        data["depth_image"] = None
+        # Skip large data in serialization
+        data["scene_clip_features"] = None
         data["depth_map"] = None
         return data
 
 
+class AnnotatedFramePacket(BaseModel):
+    """Frame packet with annotation results - post-processing format"""
+    
+    base_frame: VideoFramePacket
+    annotations: AnnotationResults = Field(default_factory=AnnotationResults)
+    
+    class Config:
+        arbitrary_types_allowed = True
+        
+    @property
+    def frame_number(self) -> int:
+        return self.base_frame.frame_number
+        
+    @property
+    def timestamp(self) -> datetime.timedelta:
+        return self.base_frame.timestamp
+        
+    @property
+    def frame_data(self) -> np.ndarray:
+        return self.base_frame.frame_data
+
+
 class VideoContent(BaseModel):
-    """Complete video content structure with serialization support"""
+    """Complete video content structure - using new annotation format"""
 
     video_path: str
     total_frames: int
     fps: float
     width: int
     height: int
-    frames: Dict[int, FrameData] = Field(default_factory=dict)
+    frames: Dict[int, AnnotatedFramePacket] = Field(default_factory=dict)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     processing_stats: Dict[str, float] = Field(default_factory=dict)
 
@@ -64,9 +154,30 @@ class VideoContent(BaseModel):
     @classmethod
     def from_dict(cls, video_dict: Dict[str, Any]) -> "VideoContent":
         """Initialize from dictionary format"""
-        frames = {
-            int(k): FrameData(**v) for k, v in video_dict.get("frames", {}).items()
-        }
+        frames = {}
+        for k, v in video_dict.get("frames", {}).items():
+            # Convert old FrameData format if needed
+            if "base_frame" not in v:
+                # Legacy conversion - create VideoFramePacket from old data
+                base_frame = VideoFramePacket(
+                    frame_data=v.get("rgb_image", np.array([])),
+                    frame_number=v.get("frame_number", 0),
+                    timestamp=datetime.timedelta(seconds=v.get("timestamp", 0.0)),
+                    source_video_id=video_dict.get("video_path", ""),
+                    additional_metadata={}
+                )
+                annotations = AnnotationResults(
+                    detections=v.get("detections", []),
+                    segments=v.get("segments", []),
+                    features=v.get("features", {})
+                )
+                frames[int(k)] = AnnotatedFramePacket(
+                    base_frame=base_frame,
+                    annotations=annotations
+                )
+            else:
+                frames[int(k)] = AnnotatedFramePacket(**v)
+        
         return cls(
             video_path=video_dict["video_path"],
             total_frames=video_dict["total_frames"],
