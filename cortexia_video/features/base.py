@@ -7,6 +7,8 @@ from typing import Any, Dict, Iterator, List, Optional, Type, Union
 from ..api.exceptions import CortexiaError, ProcessingError
 from ..data.models.video import VideoFramePacket
 from ..data.models.base_result import BaseResult
+from ..data.models.field_validation import FrameField, validate_frame_requirements
+from ..data.models.schema_registry import get_schema
 from ..data.io.generic_lance_mixin import GenericLanceMixin
 
 
@@ -22,6 +24,7 @@ class BaseFeature(GenericLanceMixin, ABC):
     # Class attributes that subclasses should define
     output_schema: Type[BaseResult] = None  # The result schema this feature produces
     required_inputs: List[str] = []  # List of required input schema names (e.g., ["TaggingResult"])
+    required_fields: List[Union[str, FrameField]] = []  # List of required VideoFramePacket fields
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
@@ -43,9 +46,22 @@ class BaseFeature(GenericLanceMixin, ABC):
         """Get the output schema class for this feature."""
         return self.__class__.output_schema
     
-    def get_required_inputs(self) -> List[str]:
-        """Get the list of required input schema names."""
-        return self.__class__.required_inputs.copy()
+    def get_required_fields(self) -> List[Union[str, FrameField]]:
+        """Get the list of required VideoFramePacket fields."""
+        return self.__class__.required_fields.copy()
+    
+    def validate_frame_inputs(self, frame: VideoFramePacket) -> None:
+        """
+        Validate that all required fields are present in the frame packet.
+        
+        Args:
+            frame: VideoFramePacket to validate
+            
+        Raises:
+            ProcessingError: If required fields are missing or empty
+        """
+        if self.required_fields:
+            validate_frame_requirements(frame, self.required_fields, self.name)
     
     def validate_inputs(self, **inputs) -> None:
         """
@@ -114,6 +130,8 @@ class BaseFeature(GenericLanceMixin, ABC):
         
         results = []
         for frame in frames:
+            # Validate frame fields for each frame
+            self.validate_frame_inputs(frame)
             result = self.process_frame(frame, **batch_inputs)
             results.append(result)
         return results
@@ -281,29 +299,18 @@ class BaseFeature(GenericLanceMixin, ABC):
     
     def _resolve_schema_class(self, schema_name: str) -> Type[BaseResult]:
         """
-        Resolve schema name to schema class.
+        Resolve schema name to schema class using centralized registry.
         
-        This is a simplified implementation. In production, you'd want
-        a proper registry system.
+        Args:
+            schema_name: Name of the schema to resolve
+            
+        Returns:
+            The schema class
+            
+        Raises:
+            ValueError: If schema name is not registered
         """
-        schema_mapping = {
-            "CaptionResult": "caption_result.CaptionResult",
-            "TaggingResult": "tagging_result.TaggingResult", 
-            "DetectionResult": "detection.DetectionResult",
-            "SegmentationResult": "segmentation.SegmentationResult",
-            "DepthResult": "depth_result.DepthResult",
-            "FeatureExtractionResult": "feature_extraction_result.FeatureExtractionResult",
-            "DescriptionResult": "description_result.DescriptionResult",
-            "GateResult": "gate_result.GateResult",
-        }
-        
-        if schema_name not in schema_mapping:
-            raise ValueError(f"Unknown schema name: {schema_name}")
-        
-        # Import and return the class
-        module_path, class_name = schema_mapping[schema_name].rsplit(".", 1)
-        module = __import__(f"..data.models.{module_path}", fromlist=[class_name])
-        return getattr(module, class_name)
+        return get_schema(schema_name)
     
     def batch_process_iterator(
         self,

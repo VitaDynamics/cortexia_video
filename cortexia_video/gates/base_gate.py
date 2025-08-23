@@ -5,6 +5,8 @@ from typing import Dict, List, Iterator, Optional, Type, TypeVar, Generic, Union
 from ..data.models.video import VideoFramePacket, AnnotatedFramePacket, TaggedFramePacket, GateResults
 from ..data.models.base_result import BaseResult
 from ..data.models.gate_result import GateResult
+from ..data.models.field_validation import FrameField, validate_frame_requirements
+from ..data.models.schema_registry import get_schema
 from ..data.io.generic_lance_mixin import GenericLanceMixin
 
 # Type variable for return type of process_frame
@@ -28,6 +30,7 @@ class BaseGate(GenericLanceMixin, Generic[T], ABC):
     # Class attributes that subclasses should define
     output_schema: Type[BaseResult] = GateResult  # Default to GateResult
     required_inputs: List[str] = []  # List of required input schema names
+    required_fields: List[Union[str, FrameField]] = []  # List of required VideoFramePacket fields
     
     def __init__(self):
         """Initialize the gate with I/O capabilities."""
@@ -44,6 +47,25 @@ class BaseGate(GenericLanceMixin, Generic[T], ABC):
     def get_required_inputs(self) -> List[str]:
         """Get the list of required input schema names."""
         return self.__class__.required_inputs.copy()
+    
+    def get_required_fields(self) -> List[Union[str, FrameField]]:
+        """Get the list of required VideoFramePacket fields."""
+        return self.__class__.required_fields.copy()
+    
+    def validate_frame_inputs(self, frame: FrameInput) -> None:
+        """
+        Validate that all required fields are present in the frame packet.
+        
+        Args:
+            frame: Frame to validate (VideoFramePacket, AnnotatedFramePacket, or TaggedFramePacket)
+            
+        Raises:
+            ProcessingError: If required fields are missing or empty
+        """
+        if self.required_fields:
+            # For tagged/annotated frames, validate against base frame
+            base_frame = getattr(frame, 'base_frame', frame)
+            validate_frame_requirements(base_frame, self.required_fields, self.name)
     
     def validate_inputs(self, **inputs) -> None:
         """
@@ -106,6 +128,8 @@ class BaseGate(GenericLanceMixin, Generic[T], ABC):
         
         results = []
         for frame in frames:
+            # Validate frame fields for each frame
+            self.validate_frame_inputs(frame)
             result = self.process_frame(frame, **batch_inputs)
             results.append(result)
         return results
@@ -202,29 +226,18 @@ class BaseGate(GenericLanceMixin, Generic[T], ABC):
     
     def _resolve_schema_class(self, schema_name: str) -> Type[BaseResult]:
         """
-        Resolve schema name to schema class.
+        Resolve schema name to schema class using centralized registry.
         
-        This is the same implementation as in BaseFeature.
-        In production, you'd want a shared registry system.
+        Args:
+            schema_name: Name of the schema to resolve
+            
+        Returns:
+            The schema class
+            
+        Raises:
+            ValueError: If schema name is not registered
         """
-        schema_mapping = {
-            "CaptionResult": "caption_result.CaptionResult",
-            "TaggingResult": "tagging_result.TaggingResult", 
-            "DetectionResult": "detection.DetectionResult",
-            "SegmentationResult": "segmentation.SegmentationResult",
-            "DepthResult": "depth_result.DepthResult",
-            "FeatureExtractionResult": "feature_extraction_result.FeatureExtractionResult",
-            "DescriptionResult": "description_result.DescriptionResult",
-            "GateResult": "gate_result.GateResult",
-        }
-        
-        if schema_name not in schema_mapping:
-            raise ValueError(f"Unknown schema name: {schema_name}")
-        
-        # Import and return the class
-        module_path, class_name = schema_mapping[schema_name].rsplit(".", 1)
-        module = __import__(f"..data.models.{module_path}", fromlist=[class_name], level=2)
-        return getattr(module, class_name)
+        return get_schema(schema_name)
     
     def filter_dataset_by_gate(
         self,

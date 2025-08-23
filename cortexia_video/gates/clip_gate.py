@@ -9,10 +9,11 @@ from PIL import Image
 
 from .base_gate import BaseGate
 from ..data.models.video import VideoFramePacket
+from ..data.models.gate_result import GateResult
 from .clip_utils import get_image_embeddings
 
 
-class ClipGate(BaseGate[float]):
+class ClipGate(BaseGate[GateResult]):
     """
     Gate that uses CLIP-like model to determine frame similarity.
     This decides if a frame is semantically similar to previously seen frames.
@@ -104,7 +105,7 @@ class ClipGate(BaseGate[float]):
 
         return False
 
-    def process_frame(self, packet: VideoFramePacket) -> bool:
+    def process_frame(self, packet: VideoFramePacket) -> GateResult:
         """
         Process a single video frame packet using CLIP embeddings to determine if
         it is semantically similar to previously seen frames.
@@ -113,13 +114,26 @@ class ClipGate(BaseGate[float]):
             packet: The VideoFramePacket containing the frame to analyze
 
         Returns:
-            bool: True if the frame is unique (passes the gate), False if it's similar (filtered)
+            GateResult: Result containing gate decision and similarity information
         """
         # Compute embedding for the current frame
         embedding = self._compute_embedding(packet)
 
         # Check if similar to any stored embeddings
         is_similar = self._is_similar_to_stored(embedding)
+        
+        # Calculate best similarity score for metadata
+        best_similarity = 0.0
+        if self.stored_embeddings:
+            similarities = []
+            for stored_embedding in self.stored_embeddings:
+                similarity = np.dot(embedding, stored_embedding) / (
+                    np.linalg.norm(embedding) * np.linalg.norm(stored_embedding)
+                )
+                similarities.append(similarity)
+            best_similarity = float(max(similarities))
+
+        passes = not is_similar  # Frame passes if unique (not similar)
 
         # Logging
         log_metadata = {
@@ -127,6 +141,8 @@ class ClipGate(BaseGate[float]):
             "timestamp": packet.timestamp,
             "source_video_id": packet.source_video_id,
             "decision_is_similar": bool(is_similar),
+            "best_similarity": best_similarity,
+            "stored_embeddings_count": len(self.stored_embeddings)
         }
         log_dict = {
             "component_name": self.__class__.__name__,
@@ -144,8 +160,33 @@ class ClipGate(BaseGate[float]):
         if not is_similar:
             self.stored_embeddings.append(embedding)
 
-        # Return True if the frame is unique (passes the gate), False if similar (filtered)
-        return not is_similar
+        # Return GateResult with detailed information
+        return GateResult(
+            passes=passes,
+            gate_name="clip_gate",
+            score=best_similarity,
+            threshold=self.similarity_threshold,
+            metadata={
+                "is_similar": is_similar,
+                "best_similarity": best_similarity,
+                "stored_embeddings_count": len(self.stored_embeddings),
+                "embedding_shape": embedding.shape,
+                "processing_metadata": log_metadata
+            }
+        )
+
+    def legacy_process_frame(self, packet: VideoFramePacket) -> bool:
+        """
+        Legacy method that returns boolean for backwards compatibility.
+        
+        Args:
+            packet: The VideoFramePacket containing the frame to analyze
+            
+        Returns:
+            bool: True if frame is unique (passes), False if similar (filtered)
+        """
+        result = self.process_frame(packet)
+        return result.passes
 
     def clear_embeddings(self) -> None:
         """

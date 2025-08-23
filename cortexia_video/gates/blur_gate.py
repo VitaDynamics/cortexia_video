@@ -7,9 +7,10 @@ import numpy as np
 
 from .base_gate import BaseGate
 from ..data.models.video import VideoFramePacket
+from ..data.models.gate_result import GateResult
 
 
-class BlurGate(BaseGate[float]):
+class BlurGate(BaseGate[GateResult]):
     DEFAULT_THRESHOLD = 100.0  # Class attribute for default blurriness threshold
 
     def __init__(
@@ -55,7 +56,7 @@ class BlurGate(BaseGate[float]):
         # Calculate the variance of the Laplacian
         return laplacian.var()
 
-    def process_frame(self, packet: VideoFramePacket) -> bool:
+    def process_frame(self, packet: VideoFramePacket) -> GateResult:
         """
         Process a single video frame packet to determine if it contains blur.
 
@@ -63,11 +64,12 @@ class BlurGate(BaseGate[float]):
             packet (VideoFramePacket): The frame packet containing the frame data and metadata
 
         Returns:
-            bool: True if the frame passes the blur gate (not blurry), False otherwise
+            GateResult: Result containing gate decision and metadata
         """
         blur_score = self._calculate_blur_score(packet.frame_data)
         # lower score is more blurry
         is_blurred = blur_score < self.threshold
+        passes = not is_blurred  # Frame passes if not blurred
 
         # Logging
         log_metadata = {
@@ -90,5 +92,28 @@ class BlurGate(BaseGate[float]):
             f"Frame {packet.frame_number} processed for blur.", extra=log_dict
         )
 
-        # Return True if the frame should pass (not blurred), False if it should be filtered (blurred)
-        return not is_blurred
+        # Return GateResult with detailed information
+        return GateResult(
+            passes=passes,
+            gate_name="blur_gate",
+            score=float(blur_score),
+            threshold=self.threshold,
+            metadata={
+                "is_blurred": is_blurred,
+                "blur_score": float(blur_score),
+                "processing_metadata": log_metadata
+            }
+        )
+    
+    def legacy_process_frame(self, packet: VideoFramePacket) -> bool:
+        """
+        Legacy method that returns boolean for backwards compatibility.
+        
+        Args:
+            packet: The VideoFramePacket containing the frame data and metadata
+            
+        Returns:
+            bool: True if frame passes (not blurry), False if filtered (blurry)
+        """
+        result = self.process_frame(packet)
+        return result.passes

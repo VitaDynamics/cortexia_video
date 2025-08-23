@@ -7,9 +7,10 @@ from PIL import Image
 from .base_gate import BaseGate
 from .image_hash import ImageHasher
 from ..data.models.video import VideoFramePacket
+from ..data.models.gate_result import GateResult
 
 
-class HashGate(BaseGate[Any]):
+class HashGate(BaseGate[GateResult]):
     DEFAULT_HASH_TYPE = "phash"
     DEFAULT_HASH_SIZE = 8
     DEFAULT_HIGHFREQ_FACTOR = 4
@@ -98,7 +99,7 @@ class HashGate(BaseGate[Any]):
 
         return False
 
-    def process_frame(self, packet: VideoFramePacket) -> bool:
+    def process_frame(self, packet: VideoFramePacket) -> GateResult:
         """
         Process a single video frame packet to determine if it's a duplicate based on perceptual hashing.
 
@@ -106,10 +107,27 @@ class HashGate(BaseGate[Any]):
             packet: The VideoFramePacket containing the frame to analyze
 
         Returns:
-            bool: True if the frame is unique (passes the gate), False if it's a duplicate (filtered)
+            GateResult: Result containing gate decision and hash information
         """
         frame_hash = self._calculate_hash(packet)
         is_duplicate = self._is_duplicate(frame_hash)
+        
+        # Calculate minimum hash difference for metadata
+        min_hash_diff = float('inf')
+        if self.stored_hashes:
+            hash_diffs = []
+            for stored_hash in self.stored_hashes:
+                hash_diff = self.hasher.hash_difference(frame_hash, stored_hash)
+                hash_diffs.append(hash_diff)
+            min_hash_diff = min(hash_diffs) if hash_diffs else 0.0
+        else:
+            min_hash_diff = 0.0
+
+        passes = not is_duplicate  # Frame passes if unique (not duplicate)
+
+        # Calculate threshold for reference
+        max_diff = self.hasher.hash_size * self.hasher.hash_size
+        threshold_value = max_diff * self.threshold
 
         # Logging
         log_metadata = {
@@ -120,6 +138,7 @@ class HashGate(BaseGate[Any]):
             "hash_type": self.hash_type,
             "decision_is_duplicate": bool(is_duplicate),
             "stored_hashes_count": len(self.stored_hashes),
+            "min_hash_diff": min_hash_diff
         }
         log_dict = {
             "component_name": self.__class__.__name__,
@@ -137,8 +156,38 @@ class HashGate(BaseGate[Any]):
         if not is_duplicate:
             self.stored_hashes.append(frame_hash)
 
-        # Return True if the frame is unique (passes the gate), False if it's a duplicate (filtered)
-        return not is_duplicate
+        # Return GateResult with detailed information
+        return GateResult(
+            passes=passes,
+            gate_name="hash_gate",
+            score=float(min_hash_diff),
+            threshold=threshold_value,
+            metadata={
+                "is_duplicate": is_duplicate,
+                "frame_hash": str(frame_hash),
+                "hash_type": self.hash_type,
+                "min_hash_diff": min_hash_diff,
+                "stored_hashes_count": len(self.stored_hashes),
+                "hash_config": {
+                    "hash_size": self.hasher.hash_size,
+                    "highfreq_factor": getattr(self.hasher, 'highfreq_factor', None)
+                },
+                "processing_metadata": log_metadata
+            }
+        )
+
+    def legacy_process_frame(self, packet: VideoFramePacket) -> bool:
+        """
+        Legacy method that returns boolean for backwards compatibility.
+        
+        Args:
+            packet: The VideoFramePacket containing the frame to analyze
+            
+        Returns:
+            bool: True if frame is unique (passes), False if duplicate (filtered)
+        """
+        result = self.process_frame(packet)
+        return result.passes
 
     def clear_hashes(self) -> None:
         """

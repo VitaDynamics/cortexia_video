@@ -6,10 +6,11 @@ import numpy as np
 
 from .base_gate import BaseGate
 from ..data.models.video import VideoFramePacket
+from ..data.models.gate_result import GateResult
 
 # TODO: we need to refactor logging schemas. 
 
-class EntropyGate(BaseGate[float]):
+class EntropyGate(BaseGate[GateResult]):
     DEFAULT_THRESHOLD = 4.0  # Class attribute for default entropy threshold
 
     def __init__(
@@ -59,7 +60,7 @@ class EntropyGate(BaseGate[float]):
 
         return entropy
 
-    def process_frame(self, packet: VideoFramePacket) -> bool:
+    def process_frame(self, packet: VideoFramePacket) -> GateResult:
         """
         Process a single video frame packet to determine if it contains sufficient information
         based on its entropy.
@@ -68,10 +69,11 @@ class EntropyGate(BaseGate[float]):
             packet (VideoFramePacket): The frame packet containing the frame data and metadata
 
         Returns:
-            bool: True if the frame passes the entropy gate (high entropy), False otherwise
+            GateResult: Result containing gate decision and entropy information
         """
         entropy_score = self._calculate_entropy(packet.frame_data)
         is_low_entropy = entropy_score < self.threshold
+        passes = not is_low_entropy  # Frame passes if high entropy
 
         # Logging
         log_metadata = {
@@ -94,5 +96,28 @@ class EntropyGate(BaseGate[float]):
             f"Frame {packet.frame_number} processed for entropy.", extra=log_dict
         )
 
-        # Return True if frame should pass (high entropy), False if it should be filtered (low entropy)
-        return not is_low_entropy
+        # Return GateResult with detailed information
+        return GateResult(
+            passes=passes,
+            gate_name="entropy_gate",
+            score=float(entropy_score),
+            threshold=self.threshold,
+            metadata={
+                "is_low_entropy": is_low_entropy,
+                "entropy_score": float(entropy_score),
+                "processing_metadata": log_metadata
+            }
+        )
+    
+    def legacy_process_frame(self, packet: VideoFramePacket) -> bool:
+        """
+        Legacy method that returns boolean for backwards compatibility.
+        
+        Args:
+            packet: The VideoFramePacket containing the frame data and metadata
+            
+        Returns:
+            bool: True if frame passes (high entropy), False if filtered (low entropy)
+        """
+        result = self.process_frame(packet)
+        return result.passes

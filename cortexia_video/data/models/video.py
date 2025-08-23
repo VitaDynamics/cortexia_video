@@ -17,6 +17,10 @@ class VideoFramePacket:
     Standardized data packet for a single video frame and its metadata.
     This structure will be used for passing frame data between samplers,
     gates, buffers, and other processing modules.
+    
+    Extended to support unified data flow between features and gates with
+    optional fields for computed embeddings, annotations, gate results,
+    and derived metadata.
     """
 
     frame_data: np.ndarray  # The raw frame image data as a NumPy array (from decord)
@@ -26,7 +30,14 @@ class VideoFramePacket:
     timestamp: datetime.timedelta  # Timestamp of the frame relative to the video start
     source_video_id: str  # A unique identifier for the source video file or stream
 
+    # Core metadata (backwards compatible)
     additional_metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    # Extended fields for unified processing
+    embeddings: Optional[Dict[str, np.ndarray]] = field(default_factory=dict)  # Named embeddings (e.g., "clip", "dino")
+    annotations: Optional['AnnotationResults'] = None  # Results from feature processing
+    gate_results: Optional['GateResults'] = None  # Results from gate processing  
+    derived_metadata: Optional[Dict[str, Any]] = field(default_factory=dict)  # Computed features/stats
 
     def __post_init__(self):
         if not isinstance(self.frame_data, np.ndarray):
@@ -59,6 +70,28 @@ class VideoFramePacket:
             raise TypeError(
                 f"additional_metadata must be a dict, got {type(self.additional_metadata)}"
             )
+        
+        # Validate new extended fields
+        if self.embeddings is None:
+            self.embeddings = {}
+        if not isinstance(self.embeddings, dict):
+            raise TypeError(
+                f"embeddings must be a dict, got {type(self.embeddings)}"
+            )
+        
+        # Validate embedding values are numpy arrays
+        for key, embedding in self.embeddings.items():
+            if not isinstance(embedding, np.ndarray):
+                raise TypeError(
+                    f"embeddings['{key}'] must be a NumPy array, got {type(embedding)}"
+                )
+        
+        if self.derived_metadata is None:
+            self.derived_metadata = {}
+        if not isinstance(self.derived_metadata, dict):
+            raise TypeError(
+                f"derived_metadata must be a dict, got {type(self.derived_metadata)}"
+            )
 
     def __eq__(self, other):
         """
@@ -73,18 +106,34 @@ class VideoFramePacket:
         if not isinstance(other, VideoFramePacket):
             return False
 
-        # Compare all fields except frame_data which is a numpy array
+        # Compare all fields except frame_data and embeddings which contain numpy arrays
         fields_equal = (
             self.frame_number == other.frame_number
             and self.timestamp == other.timestamp
             and self.source_video_id == other.source_video_id
             and self.additional_metadata == other.additional_metadata
+            and self.annotations == other.annotations
+            and self.gate_results == other.gate_results
+            and self.derived_metadata == other.derived_metadata
         )
 
         # Compare the numpy arrays
         arrays_equal = np.array_equal(self.frame_data, other.frame_data)
+        
+        # Compare embeddings dictionaries
+        embeddings_equal = True
+        if len(self.embeddings) != len(other.embeddings):
+            embeddings_equal = False
+        else:
+            for key in self.embeddings:
+                if key not in other.embeddings:
+                    embeddings_equal = False
+                    break
+                if not np.array_equal(self.embeddings[key], other.embeddings[key]):
+                    embeddings_equal = False
+                    break
 
-        return fields_equal and arrays_equal
+        return fields_equal and arrays_equal and embeddings_equal
 
 
 class AnnotationResults(BaseModel):
@@ -181,70 +230,3 @@ class TaggedFramePacket(BaseModel):
     def passes_gates(self) -> bool:
         """Check if frame passes all gate criteria"""
         return self.gate_results.passes
-
-
-class VideoContent(BaseModel):
-    """Complete video content structure - using new annotation format"""
-
-    video_path: str
-    total_frames: int
-    fps: float
-    width: int
-    height: int
-    frames: Dict[int, AnnotatedFramePacket] = Field(default_factory=dict)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    processing_stats: Dict[str, float] = Field(default_factory=dict)
-
-    class Config:
-        arbitrary_types_allowed = True
-
-    @classmethod
-    def from_dict(cls, video_dict: Dict[str, Any]) -> "VideoContent":
-        """Initialize from dictionary format"""
-        frames = {}
-        for k, v in video_dict.get("frames", {}).items():
-            # Convert old FrameData format if needed
-            if "base_frame" not in v:
-                # Legacy conversion - create VideoFramePacket from old data
-                base_frame = VideoFramePacket(
-                    frame_data=v.get("rgb_image", np.array([])),
-                    frame_number=v.get("frame_number", 0),
-                    timestamp=datetime.timedelta(seconds=v.get("timestamp", 0.0)),
-                    source_video_id=video_dict.get("video_path", ""),
-                    additional_metadata={}
-                )
-                annotations = AnnotationResults(
-                    detections=v.get("detections", []),
-                    segments=v.get("segments", []),
-                    features=v.get("features", {})
-                )
-                frames[int(k)] = AnnotatedFramePacket(
-                    base_frame=base_frame,
-                    annotations=annotations
-                )
-            else:
-                frames[int(k)] = AnnotatedFramePacket(**v)
-        
-        return cls(
-            video_path=video_dict["video_path"],
-            total_frames=video_dict["total_frames"],
-            fps=video_dict["fps"],
-            width=video_dict.get("width", 0),
-            height=video_dict.get("height", 0),
-            frames=frames,
-            metadata=video_dict.get("metadata", {}),
-            processing_stats=video_dict.get("processing_stats", {}),
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary format"""
-        return {
-            "video_path": self.video_path,
-            "total_frames": self.total_frames,
-            "fps": self.fps,
-            "width": self.width,
-            "height": self.height,
-            "frames": {str(k): v.dict() for k, v in self.frames.items()},
-            "metadata": self.metadata,
-            "processing_stats": self.processing_stats,
-        }
