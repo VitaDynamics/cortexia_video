@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterator, List, Optional, Type, Union
 
 from ..api.exceptions import CortexiaError, ProcessingError
 from ..data.models.video import VideoFramePacket
-from ..data.models.base_result import BaseResult
+from ..data.models.result.base_result import BaseResult
 from ..data.models.field_validation import FrameField, validate_frame_requirements
 from ..data.models.schema_registry import get_schema
 from ..data.io.generic_lance_mixin import GenericLanceMixin

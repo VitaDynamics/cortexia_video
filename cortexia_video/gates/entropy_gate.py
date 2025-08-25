@@ -6,7 +6,7 @@ import numpy as np
 
 from .base_gate import BaseGate
 from ..data.models.video import VideoFramePacket
-from ..data.models.gate_result import GateResult
+from ..data.models.result.gate_result import GateResult
 
 # TODO: we need to refactor logging schemas. 
 
@@ -75,27 +75,6 @@ class EntropyGate(BaseGate[GateResult]):
         is_low_entropy = entropy_score < self.threshold
         passes = not is_low_entropy  # Frame passes if high entropy
 
-        # Logging
-        log_metadata = {
-            "frame_number": packet.frame_number,
-            "timestamp": packet.timestamp,
-            "source_video_id": packet.source_video_id,
-            "entropy_score_calculated": float(entropy_score),
-            "threshold_used": self.threshold,
-            "decision_is_low_entropy": bool(is_low_entropy),
-        }
-        log_dict = {
-            "component_name": self.__class__.__name__,
-            "operation": "process_frame_entropy_check",
-            "outcome": "low_entropy" if is_low_entropy else "high_entropy",
-            "event_id": str(uuid.uuid4()),
-            "session_id": self.session_id,
-            "relevant_metadata": log_metadata,
-        }
-        self.logger.info(
-            f"Frame {packet.frame_number} processed for entropy.", extra=log_dict
-        )
-
         # Return GateResult with detailed information
         return GateResult(
             passes=passes,
@@ -105,19 +84,6 @@ class EntropyGate(BaseGate[GateResult]):
             metadata={
                 "is_low_entropy": is_low_entropy,
                 "entropy_score": float(entropy_score),
-                "processing_metadata": log_metadata
             }
         )
     
-    def legacy_process_frame(self, packet: VideoFramePacket) -> bool:
-        """
-        Legacy method that returns boolean for backwards compatibility.
-        
-        Args:
-            packet: The VideoFramePacket containing the frame data and metadata
-            
-        Returns:
-            bool: True if frame passes (high entropy), False if filtered (low entropy)
-        """
-        result = self.process_frame(packet)
-        return result.passes

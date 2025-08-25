@@ -118,20 +118,24 @@ class VideoFramePacket:
         )
 
         # Compare the numpy arrays
+        # TODO: I thknk for emebedding, we need to more light way for it.
         arrays_equal = np.array_equal(self.frame_data, other.frame_data)
         
         # Compare embeddings dictionaries
         embeddings_equal = True
-        if len(self.embeddings) != len(other.embeddings):
-            embeddings_equal = False
-        else:
-            for key in self.embeddings:
-                if key not in other.embeddings:
-                    embeddings_equal = False
-                    break
-                if not np.array_equal(self.embeddings[key], other.embeddings[key]):
-                    embeddings_equal = False
-                    break
+        
+        if self.embeddings:
+            # Only compare when embeddings are exsiting.
+            if len(self.embeddings) != len(other.embeddings):
+                embeddings_equal = False
+            else:
+                for key in self.embeddings:
+                    if key not in other.embeddings:
+                        embeddings_equal = False
+                        break
+                    if not np.array_equal(self.embeddings[key], other.embeddings[key]):
+                        embeddings_equal = False
+                        break
 
         return fields_equal and arrays_equal and embeddings_equal
     

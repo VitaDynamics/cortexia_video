@@ -9,21 +9,22 @@ from PIL import Image
 
 from .base_gate import BaseGate
 from ..data.models.video import VideoFramePacket
-from ..data.models.gate_result import GateResult
+from ..data.models.result.gate_result import GateResult
 from .clip_utils import get_image_embeddings
 
 
 class ClipGate(BaseGate[GateResult]):
     """
-    Gate that uses CLIP-like model to determine frame similarity.
-    This decides if a frame is semantically similar to previously seen frames.
+    Gate that uses a CLIP-like model to compute image embeddings.
+
+    This calculator returns the embedding vector per frame; any similarity
+    comparison/thresholding is external.
 
     Note: This implementation depends on an external CLIP package.
     """
 
     def __init__(
         self,
-        similarity_threshold: float = 0.8,
         session_id: str = "default_session",
         clip_model_name: str = "ViT-B/32",
         clip_pretrained_weights: str = "openai",
@@ -33,16 +34,13 @@ class ClipGate(BaseGate[GateResult]):
         Initialize the ClipGate
 
         Args:
-            similarity_threshold: The threshold for considering frames semantically similar
             session_id: Identifier for the current session, used in logging
             clip_model_name: CLIP model architecture to use
             clip_pretrained_weights: Pre-trained weights to use
             device: Device to perform inference on. Auto-detects if None.
         """
-        self.similarity_threshold = similarity_threshold
         self.logger = logging.getLogger(f"Decimatr.{self.__class__.__name__}")
         self.session_id = session_id
-        self.stored_embeddings: List[np.ndarray] = []
         self.clip_model_name = clip_model_name
         self.clip_pretrained_weights = clip_pretrained_weights
         self.device = device
@@ -81,115 +79,47 @@ class ClipGate(BaseGate[GateResult]):
         )
         return embedding_batch[0]
 
-    def _is_similar_to_stored(self, embedding: np.ndarray) -> bool:
-        """
-        Check if an embedding is similar to any stored embeddings.
-
-        Args:
-            embedding: The embedding to check
-
-        Returns:
-            bool: True if similar to any stored embedding, False otherwise
-        """
-        if not self.stored_embeddings:
-            return False
-
-        for stored_embedding in self.stored_embeddings:
-            # Compute cosine similarity
-            similarity = np.dot(embedding, stored_embedding) / (
-                np.linalg.norm(embedding) * np.linalg.norm(stored_embedding)
-            )
-
-            if similarity > self.similarity_threshold:
-                return True
-
-        return False
-
     def process_frame(self, packet: VideoFramePacket) -> GateResult:
         """
-        Process a single video frame packet using CLIP embeddings to determine if
-        it is semantically similar to previously seen frames.
+        Compute a CLIP embedding for the frame.
 
         Args:
             packet: The VideoFramePacket containing the frame to analyze
 
         Returns:
-            GateResult: Result containing gate decision and similarity information
+            GateResult: Result containing embedding vector and metadata
         """
         # Compute embedding for the current frame
         embedding = self._compute_embedding(packet)
-
-        # Check if similar to any stored embeddings
-        is_similar = self._is_similar_to_stored(embedding)
-        
-        # Calculate best similarity score for metadata
-        best_similarity = 0.0
-        if self.stored_embeddings:
-            similarities = []
-            for stored_embedding in self.stored_embeddings:
-                similarity = np.dot(embedding, stored_embedding) / (
-                    np.linalg.norm(embedding) * np.linalg.norm(stored_embedding)
-                )
-                similarities.append(similarity)
-            best_similarity = float(max(similarities))
-
-        passes = not is_similar  # Frame passes if unique (not similar)
 
         # Logging
         log_metadata = {
             "frame_number": packet.frame_number,
             "timestamp": packet.timestamp,
             "source_video_id": packet.source_video_id,
-            "decision_is_similar": bool(is_similar),
-            "best_similarity": best_similarity,
-            "stored_embeddings_count": len(self.stored_embeddings)
+            "model": self.clip_model_name,
+            "weights": self.clip_pretrained_weights,
         }
         log_dict = {
             "component_name": self.__class__.__name__,
-            "operation": "process_frame_clip_check",
-            "outcome": "similar" if is_similar else "unique",
+            "operation": "compute_clip_embedding",
+            "outcome": "computed",
             "event_id": str(uuid.uuid4()),
             "session_id": self.session_id,
             "relevant_metadata": log_metadata,
         }
         self.logger.info(
-            f"Frame {packet.frame_number} processed with CLIP.", extra=log_dict
+            f"Frame {packet.frame_number} processed for CLIP embedding.",
+            extra=log_dict,
         )
 
-        # If not similar to any stored embedding, store this one
-        if not is_similar:
-            self.stored_embeddings.append(embedding)
-
-        # Return GateResult with detailed information
+        # Return GateResult with embedding vector; policy is external
         return GateResult(
-            passes=passes,
             gate_name="clip_gate",
-            score=best_similarity,
-            threshold=self.similarity_threshold,
+            vector=embedding,
             metadata={
-                "is_similar": is_similar,
-                "best_similarity": best_similarity,
-                "stored_embeddings_count": len(self.stored_embeddings),
-                "embedding_shape": embedding.shape,
-                "processing_metadata": log_metadata
-            }
+                "model_name": self.clip_model_name,
+                "pretrained": self.clip_pretrained_weights,
+                "processing_metadata": log_metadata,
+            },
         )
-
-    def legacy_process_frame(self, packet: VideoFramePacket) -> bool:
-        """
-        Legacy method that returns boolean for backwards compatibility.
-        
-        Args:
-            packet: The VideoFramePacket containing the frame to analyze
-            
-        Returns:
-            bool: True if frame is unique (passes), False if similar (filtered)
-        """
-        result = self.process_frame(packet)
-        return result.passes
-
-    def clear_embeddings(self) -> None:
-        """
-        Clear all stored embeddings.
-        """
-        self.stored_embeddings = []

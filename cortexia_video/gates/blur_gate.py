@@ -7,25 +7,12 @@ import numpy as np
 
 from .base_gate import BaseGate
 from ..data.models.video import VideoFramePacket
-from ..data.models.gate_result import GateResult
+from ..data.models.result.gate_result import GateResult
 
 
 class BlurGate(BaseGate[GateResult]):
-    DEFAULT_THRESHOLD = 100.0  # Class attribute for default blurriness threshold
-
-    def __init__(
-        self, threshold: Optional[float] = None, session_id: str = "default_session"
-    ):
-        """
-        Initializes the BlurGate component.
-
-        Args:
-            threshold (Optional[float]): The variance of Laplacian threshold.
-                             Images with variance below this are considered blurred.
-                             If None, uses DEFAULT_THRESHOLD.
-            session_id (str): Identifier for the current session, used in logging.
-        """
-        self.threshold = threshold if threshold is not None else self.DEFAULT_THRESHOLD
+    def __init__(self, session_id: str = "default_session"):
+        """Initialize the BlurGate as a pure metric calculator."""
         self.logger = logging.getLogger(f"Decimatr.{self.__class__.__name__}")
         self.session_id = session_id
 
@@ -64,56 +51,18 @@ class BlurGate(BaseGate[GateResult]):
             packet (VideoFramePacket): The frame packet containing the frame data and metadata
 
         Returns:
-            GateResult: Result containing gate decision and metadata
+            GateResult: Result containing blur score and metadata
         """
         blur_score = self._calculate_blur_score(packet.frame_data)
-        # lower score is more blurry
-        is_blurred = blur_score < self.threshold
-        passes = not is_blurred  # Frame passes if not blurred
-
-        # Logging
-        log_metadata = {
-            "frame_number": packet.frame_number,
-            "timestamp": packet.timestamp,
-            "source_video_id": packet.source_video_id,
-            "blur_score_calculated": float(blur_score),
-            "threshold_used": self.threshold,
-            "decision_is_blurred": bool(is_blurred),
-        }
-        log_dict = {
-            "component_name": self.__class__.__name__,
-            "operation": "process_frame_blur_check",
-            "outcome": "blurred" if is_blurred else "not_blurred",
-            "event_id": str(uuid.uuid4()),
-            "session_id": self.session_id,
-            "relevant_metadata": log_metadata,
-        }
-        self.logger.info(
-            f"Frame {packet.frame_number} processed for blur.", extra=log_dict
-        )
-
-        # Return GateResult with detailed information
+        # Return GateResult with measured score only; policy is external
         return GateResult(
-            passes=passes,
             gate_name="blur_gate",
             score=float(blur_score),
-            threshold=self.threshold,
             metadata={
-                "is_blurred": is_blurred,
-                "blur_score": float(blur_score),
-                "processing_metadata": log_metadata
-            }
+                "metric": "variance_of_laplacian",
+                "frame_number": packet.frame_number,
+                "timestamp": packet.timestamp.total_seconds(),
+                "source_video_id": packet.source_video_id,
+            },
         )
     
-    def legacy_process_frame(self, packet: VideoFramePacket) -> bool:
-        """
-        Legacy method that returns boolean for backwards compatibility.
-        
-        Args:
-            packet: The VideoFramePacket containing the frame data and metadata
-            
-        Returns:
-            bool: True if frame passes (not blurry), False if filtered (blurry)
-        """
-        result = self.process_frame(packet)
-        return result.passes

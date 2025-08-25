@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import Dict, List, Iterator, Optional, Type, TypeVar, Generic, Union, Callable
 
 from ..data.models.video import VideoFramePacket, AnnotatedFramePacket, TaggedFramePacket, GateResults
-from ..data.models.base_result import BaseResult
-from ..data.models.gate_result import GateResult
+from ..data.models.result.base_result import BaseResult
+from ..data.models.result.gate_result import GateResult
 from ..data.models.field_validation import FrameField, validate_frame_requirements
 from ..data.models.schema_registry import get_schema
 from ..data.io.generic_lance_mixin import GenericLanceMixin
@@ -19,12 +19,11 @@ FrameInput = Union[VideoFramePacket, AnnotatedFramePacket, TaggedFramePacket]
 class BaseGate(GenericLanceMixin, Generic[T], ABC):
     """
     Abstract base class for all gate implementations.
-    
-    Gates are responsible for deciding whether frames should pass through
-    or be filtered out, typically by analyzing frame content and returning a boolean.
-    
-    Enhanced to support unified data flow with schema-based results and
-    I/O capabilities for dataset integration.
+
+    Gates are calculators: they compute per-frame measurements or features
+    (e.g., blur score, hash, signature, embeddings) and do not make pass/fail
+    decisions. Thresholding or comparison with stored context is delegated to
+    downstream buffers/policies.
     """
     
     # Class attributes that subclasses should define
@@ -98,14 +97,14 @@ class BaseGate(GenericLanceMixin, Generic[T], ABC):
     @abstractmethod
     def process_frame(self, frame: FrameInput, **inputs) -> T:
         """
-        Process a single frame to determine if it should pass through the gate.
+        Compute a measurement/feature from a single frame.
         
         Args:
             frame: Frame to process (VideoFramePacket, AnnotatedFramePacket, or TaggedFramePacket)
             **inputs: Additional inputs keyed by schema name (e.g., CaptionResult="caption_result")
             
         Returns:
-            BaseResult instance (typically GateResult) containing gate decision and metadata
+            BaseResult instance (typically GateResult) containing metric/feature and metadata
         """
         pass
     
@@ -133,25 +132,6 @@ class BaseGate(GenericLanceMixin, Generic[T], ABC):
             result = self.process_frame(frame, **batch_inputs)
             results.append(result)
         return results
-    
-    # Legacy compatibility methods for old TaggedFramePacket workflow
-    
-    def legacy_process_frame(self, packet: FrameInput) -> bool:
-        """
-        Legacy method that returns boolean for backwards compatibility.
-        
-        This calls the new process_frame method and extracts the boolean result.
-        """
-        result = self.process_frame(packet)
-        if isinstance(result, GateResult):
-            return result.passes
-        elif hasattr(result, 'passes'):
-            return result.passes
-        else:
-            # Fallback - assume any truthy result means pass
-            return bool(result)
-    
-    # Schema-based I/O Methods (similar to BaseFeature)
     
     def process_from_dataset(
         self,
@@ -239,72 +219,47 @@ class BaseGate(GenericLanceMixin, Generic[T], ABC):
         """
         return get_schema(schema_name)
     
-    def filter_dataset_by_gate(
+    def filter_dataset(
         self,
         input_dataset_path: Union[str, Path],
         output_dataset_path: Union[str, Path],
-        passing_only: bool = True,
-        **inputs
+        predicate: Callable[[T], bool],
+        save_mode: str = "create",
     ) -> Dict[str, int]:
         """
-        Filter dataset based on gate results.
-        
+        Filter a results dataset using a predicate over result objects.
+
+        Because gates no longer decide pass/fail, callers must provide a
+        predicate that maps each result to True/False (e.g., thresholding).
+
         Args:
             input_dataset_path: Path to gate results dataset
             output_dataset_path: Path to filtered output dataset
-            passing_only: If True, save only passing results
-            **inputs: Additional inputs for gate evaluation
-            
+            predicate: Callable that returns True to keep a result
+            save_mode: Save mode for results ("append", "overwrite", "create")
+
         Returns:
             Dictionary with filtering statistics
         """
-        total_results = 0
-        passing_results = 0
-        failing_results = 0
-        filtered_results = []
-        
-        # Load and filter gate results
-        for gate_result in self.load_results_from_lance(input_dataset_path, self.output_schema):
-            total_results += 1
-            
-            if hasattr(gate_result, 'passes'):
-                passes = gate_result.passes
+        total = 0
+        kept = 0
+        dropped = 0
+        out = []
+
+        for result in self.load_results_from_lance(input_dataset_path, self.output_schema):
+            total += 1
+            try:
+                keep = bool(predicate(result))
+            except Exception:
+                keep = False
+            if keep:
+                kept += 1
+                out.append(result)
             else:
-                passes = bool(gate_result)
-            
-            if passes:
-                passing_results += 1
-                if not passing_only:  # Save all, or save only passing
-                    filtered_results.append(gate_result)
-            else:
-                failing_results += 1
-                if passing_only:  # Save all, or save only failing
-                    filtered_results.append(gate_result)
-        
-        # Save filtered results
-        if filtered_results:
-            self.save_results_to_lance(filtered_results, output_dataset_path, "create")
-        
-        return {
-            "total_results": total_results,
-            "passing_results": passing_results,
-            "failing_results": failing_results,
-            "pass_rate": passing_results / total_results if total_results > 0 else 0.0
-        }
+                dropped += 1
+
+        if out:
+            self.save_results_to_lance(out, output_dataset_path, save_mode)
+
+        return {"total": total, "kept": kept, "dropped": dropped}
     
-    # Legacy compatibility for callable gates
-    
-    def __call__(self, packet: FrameInput) -> bool:
-        """
-        Makes the gate callable for backwards compatibility.
-        
-        This calls legacy_process_frame to maintain boolean return type
-        that existing code expects.
-        
-        Args:
-            packet: Frame packet to process
-            
-        Returns:
-            Boolean result for gate decision
-        """
-        return self.legacy_process_frame(packet)
