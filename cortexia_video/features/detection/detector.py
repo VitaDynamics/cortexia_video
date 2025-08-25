@@ -7,7 +7,7 @@ from PIL import Image
 
 from ..base import BaseFeature
 from ...api.exceptions import ModelLoadError, ProcessingError
-from ...data.models.detection import BoundingBox, DetectionResult
+from ...data.models.detection_result import BoundingBox, DetectionResult
 from ...data.models.video import VideoFramePacket, AnnotationResults
 from ...data.io.lance_mixin import LanceMixin
 from .models import ObjectDetector

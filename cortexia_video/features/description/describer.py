@@ -7,7 +7,7 @@ from PIL import Image
 
 from ..base import BaseFeature
 from ...api.exceptions import ModelLoadError, ProcessingError
-from ...data.models.detection import DetectionResult
+from ...data.models.detection_result import DetectionResult
 from ...data.models.video import FrameData
 from .models import ObjectDescriber
 

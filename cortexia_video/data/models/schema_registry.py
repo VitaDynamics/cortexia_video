@@ -8,7 +8,7 @@ from typing import Dict, Type, List, Optional
 from pathlib import Path
 import importlib
 
-from .base_result import BaseResult
+from .result.base_result import BaseResult
 
 
 class SchemaRegistry:

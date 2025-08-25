@@ -6,5 +6,5 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..data.models.video import FrameData, VideoContent
-    from ..data.models.detection import DetectionResult
-    from ..data.models.segmentation import SegmentationResult
+    from ..data.models.detection_result import DetectionResult
+    from ..data.models.segmentation_result import SegmentationResult

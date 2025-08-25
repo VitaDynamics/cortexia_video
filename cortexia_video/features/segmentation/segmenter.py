@@ -8,8 +8,8 @@ from PIL import Image
 
 from ..base import BaseFeature
 from ...api.exceptions import ModelLoadError, ProcessingError
-from ...data.models.detection import BoundingBox, DetectionResult
-from ...data.models.segmentation import SegmentationResult
+from ...data.models.detection_result import BoundingBox, DetectionResult
+from ...data.models.segmentation_result import SegmentationResult
 from ...data.models.video import FrameData
 from .models import ObjectSegmenter
 

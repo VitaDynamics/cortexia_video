@@ -7,8 +7,8 @@ import datetime
 import numpy as np
 from pydantic import BaseModel, Field
 
-from .detection import DetectionResult
-from .segmentation import SegmentationResult
+from .result.detection_result import DetectionResult
+from .result.segmentation_result import SegmentationResult
 
 
 @dataclass
@@ -134,6 +134,144 @@ class VideoFramePacket:
                     break
 
         return fields_equal and arrays_equal and embeddings_equal
+    
+    # Convenience methods for unified data flow
+    
+    def add_annotation_result(self, result_type: str, result_data: Any) -> None:
+        """
+        Add annotation result to the frame.
+        
+        Args:
+            result_type: Type of annotation result (e.g., 'caption', 'detections')
+            result_data: The annotation data to add
+        """
+        if self.annotations is None:
+            self.annotations = AnnotationResults()
+        
+        if result_type == 'caption':
+            self.annotations.caption = result_data
+        elif result_type == 'detections':
+            if isinstance(result_data, list):
+                self.annotations.detections.extend(result_data)
+            else:
+                self.annotations.detections.append(result_data)
+        elif result_type == 'segments':
+            if isinstance(result_data, list):
+                self.annotations.segments.extend(result_data)
+            else:
+                self.annotations.segments.append(result_data)
+        elif result_type == 'depth_map':
+            self.annotations.depth_map = result_data
+        elif result_type == 'depth_statistics':
+            self.annotations.depth_statistics = result_data
+        elif result_type == 'scene_clip_features':
+            self.annotations.scene_clip_features = result_data
+        elif result_type == 'lister_results':
+            self.annotations.lister_results = result_data
+        elif result_type == 'dino_prompt':
+            self.annotations.dino_prompt = result_data
+        else:
+            # Store in general features dict
+            self.annotations.features[result_type] = result_data
+    
+    def add_gate_result(self, gate_name: str, passes: bool, score: Optional[float] = None, 
+                       metadata: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Add gate result to the frame.
+        
+        Args:
+            gate_name: Name of the gate
+            passes: Whether the frame passed the gate
+            score: Optional confidence score
+            metadata: Optional gate-specific metadata
+        """
+        if self.gate_results is None:
+            self.gate_results = GateResults()
+        
+        self.gate_results.add_gate_result(gate_name, passes, score, metadata)
+    
+    def add_embedding(self, embedding_name: str, embedding: np.ndarray) -> None:
+        """
+        Add named embedding to the frame.
+        
+        Args:
+            embedding_name: Name of the embedding (e.g., 'clip', 'dino')
+            embedding: The embedding vector as numpy array
+        """
+        if not isinstance(embedding, np.ndarray):
+            raise TypeError(f"Embedding must be a NumPy array, got {type(embedding)}")
+        
+        if self.embeddings is None:
+            self.embeddings = {}
+        
+        self.embeddings[embedding_name] = embedding
+    
+    def get_embedding(self, embedding_name: str) -> Optional[np.ndarray]:
+        """
+        Get named embedding from the frame.
+        
+        Args:
+            embedding_name: Name of the embedding
+            
+        Returns:
+            The embedding array, or None if not found
+        """
+        if self.embeddings is None:
+            return None
+        return self.embeddings.get(embedding_name)
+    
+    def has_annotations(self) -> bool:
+        """Check if frame has any annotation results."""
+        return self.annotations is not None
+    
+    def has_gate_results(self) -> bool:
+        """Check if frame has any gate results."""
+        return self.gate_results is not None
+    
+    def passes_all_gates(self) -> bool:
+        """Check if frame passes all gate criteria."""
+        if self.gate_results is None:
+            return True  # No gates means all pass
+        return self.gate_results.passes
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert frame packet to dictionary for serialization.
+        
+        Returns:
+            Dictionary representation of the frame packet
+        """
+        result = {
+            'frame_number': self.frame_number,
+            'timestamp': self.timestamp.total_seconds(),
+            'source_video_id': self.source_video_id,
+            'additional_metadata': self.additional_metadata.copy(),
+            'derived_metadata': self.derived_metadata.copy() if self.derived_metadata else {},
+            'frame_shape': list(self.frame_data.shape),
+            'frame_dtype': str(self.frame_data.dtype),
+        }
+        
+        if self.embeddings:
+            result['embeddings'] = {name: emb.shape for name, emb in self.embeddings.items()}
+        
+        if self.annotations:
+            result['has_annotations'] = True
+            result['annotations_summary'] = {
+                'detections_count': len(self.annotations.detections),
+                'segments_count': len(self.annotations.segments),
+                'has_caption': self.annotations.caption is not None,
+                'has_depth_map': self.annotations.depth_map is not None,
+            }
+        
+        if self.gate_results:
+            result['gate_results'] = {
+                'passes': self.gate_results.passes,
+                'gate_count': len(self.gate_results.gate_decisions),
+                'gate_decisions': self.gate_results.gate_decisions.copy(),
+                'gate_scores': self.gate_results.gate_scores.copy(),
+            }
+        
+        return result
 
 
 class AnnotationResults(BaseModel):
@@ -180,53 +318,3 @@ class GateResults(BaseModel):
             self.gate_metadata[gate_name] = metadata
         # Update overall pass/fail
         self.passes = self.passes and passes
-
-
-class AnnotatedFramePacket(BaseModel):
-    """Frame packet with annotation results - post-processing format"""
-    
-    base_frame: VideoFramePacket
-    annotations: AnnotationResults = Field(default_factory=AnnotationResults)
-    
-    class Config:
-        arbitrary_types_allowed = True
-        
-    @property
-    def frame_number(self) -> int:
-        return self.base_frame.frame_number
-        
-    @property
-    def timestamp(self) -> datetime.timedelta:
-        return self.base_frame.timestamp
-        
-    @property
-    def frame_data(self) -> np.ndarray:
-        return self.base_frame.frame_data
-
-
-class TaggedFramePacket(BaseModel):
-    """Frame packet with both annotations and gate results - complete processing format"""
-    
-    base_frame: VideoFramePacket
-    annotations: AnnotationResults = Field(default_factory=AnnotationResults) 
-    gate_results: GateResults = Field(default_factory=GateResults)
-    
-    class Config:
-        arbitrary_types_allowed = True
-        
-    @property  
-    def frame_number(self) -> int:
-        return self.base_frame.frame_number
-        
-    @property
-    def timestamp(self) -> datetime.timedelta:
-        return self.base_frame.timestamp
-        
-    @property
-    def frame_data(self) -> np.ndarray:
-        return self.base_frame.frame_data
-        
-    @property
-    def passes_gates(self) -> bool:
-        """Check if frame passes all gate criteria"""
-        return self.gate_results.passes

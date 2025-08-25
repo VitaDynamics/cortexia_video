@@ -6,7 +6,7 @@ import numpy as np
 from pydantic import BaseModel, Field
 
 from .base_result import BaseResult
-from .detection import BoundingBox
+from .detection_result import BoundingBox
 
 
 class SegmentationResult(BaseResult):

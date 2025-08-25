@@ -1,8 +1,8 @@
 """Data models for Cortexia Video SDK"""
 
 from .video import FrameData, VideoContent
-from .detection import BoundingBox, DetectionResult
-from .segmentation import SegmentationResult
+from .detection_result import BoundingBox, DetectionResult
+from .segmentation_result import SegmentationResult
 
 __all__ = [
     "FrameData",
