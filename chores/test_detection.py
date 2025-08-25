@@ -6,8 +6,8 @@ import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 from PIL import Image
 
-from cortexia_video.config_manager import ConfigManager
-from cortexia_video.features.detection.models import ObjectDetector
+from cortexia.config_manager import ConfigManager
+from cortexia.features.detection.models import ObjectDetector
 
 
 def visualize_detections(image, detections, output_path=None):

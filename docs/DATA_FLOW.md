@@ -40,7 +40,7 @@ VideoFramePacket � Features � AnnotatedFramePacket � Gates � TaggedFrame
 
 ## Data Models
 
-Check @cortexia_video/data/models/video.py
+Check @cortexia/data/models/video.py
 
 
 #### AnnotationResults

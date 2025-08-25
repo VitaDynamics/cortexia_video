@@ -1,0 +1,32 @@
+"""Description result schema for object description features."""
+
+from typing import List, Optional
+
+from .base_result import BaseResult
+from ..registry import schema_registry
+
+@schema_registry.register("result.description")
+class DescriptionResult(BaseResult):
+    """Result schema for object description operations."""
+    
+    descriptions: List[str]  # Descriptions for each detected object
+    object_ids: Optional[List[str]] = None  # IDs linking to detection results
+    model_name: Optional[str] = None
+    processing_time_ms: Optional[float] = None
+    
+    def _get_repr_fields(self) -> str:
+        """Show key fields for repr."""
+        fields = []
+        if self.descriptions:
+            desc_count = len(self.descriptions)
+            desc_preview = self.descriptions[0][:30] + "..." if self.descriptions[0] else "empty"
+            fields.append(f"descriptions={desc_count} ('{desc_preview}')")
+        if self.model_name:
+            fields.append(f"model={self.model_name}")
+        return ", ".join(fields)
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "DescriptionResult":
+        """Reconstruct from dictionary."""
+        deserialized_data = cls._deserialize_special_types(data)
+        return cls(**deserialized_data)

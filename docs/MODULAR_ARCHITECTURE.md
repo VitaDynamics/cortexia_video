@@ -54,15 +54,15 @@ This design gives you a true SDK where users can compose their own processing fl
 ## Universal Registry & Decorators
 
 - Purpose: Provide a simple, explicit way to register implementations for features, gates, and inner model choices (e.g., captioners, listers) using decorators.
-- Location: `cortexia_video/core/registry.py`
+- Location: `cortexia/core/registry.py`
 - API: `Registry`, `create_registry(kind)` with `register`, `decorator`, `get`, `create`, `items`, `keys`.
 
 Usage patterns:
 
-- Features and gates: Use factory decorators to auto-register classes on import.
+- Features and gates: Use hubs to auto-register classes on import.
 
-  - Feature: `@FeatureFactory.decorator("my_feature", default_config={...})`
-  - Gate: `@GateFactory.decorator("my_gate", default_config={...})`
+  - Feature: `from cortexia.core.typed_registry import feature_hub; @feature_hub.decorator("my_feature", default_config={...})`
+  - Gate: `from cortexia.core.typed_registry import gate_hub; @gate_hub.decorator("my_gate", default_config={...})`
 
 - Inner registries (e.g., captioners, listers): Create a registry and decorate implementations.
 
@@ -72,9 +72,9 @@ Usage patterns:
 Example (captioners):
 
 ```
-from cortexia_video.core.registry import create_registry
+from cortexia.core.typed_registry import get_model_hub
 
-IMAGE_CAPTIONER_REGISTRY = create_registry("image_captioner")
+IMAGE_CAPTIONER_REGISTRY = get_model_hub("image_captioner")
 
 @IMAGE_CAPTIONER_REGISTRY.decorator("vikhyatk/moondream2", aliases=["moondream2"])
 class MoonDreamCaptioner(ImageCaptioner):

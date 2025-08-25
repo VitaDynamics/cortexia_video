@@ -7,8 +7,8 @@ from PIL import Image
 # Add the parent directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from cortexia_video.config_manager import ConfigManager
-from cortexia_video.features.feature_extraction.models import CLIPFeatureExtractor
+from cortexia.config_manager import ConfigManager
+from cortexia.features.feature_extraction.models import CLIPFeatureExtractor
 
 
 def test_image_features(image_path=None):

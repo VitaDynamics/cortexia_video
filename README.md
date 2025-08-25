@@ -56,8 +56,8 @@ The pipeline requires several pre-trained models that will be automatically down
 ### 1. Clone the Repository
 
 ```bash
-git clone --recursive https://github.com/DylanLIiii/cortexia_video.git
-cd cortexia_video
+git clone --recursive https://github.com/DylanLIiii/cortexia.git
+cd cortexia
 ```
 
 ### 2. Install Dependencies
