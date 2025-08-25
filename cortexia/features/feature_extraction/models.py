@@ -5,19 +5,7 @@ from PIL import Image
 import decord
 from abc import ABC, abstractmethod
 from typing import Any, List, Optional, Dict
-
-# Try importing perception_models; if not found, add likely repo path
-try:
-    import perception_models.core.vision_encoder.pe as pe
-    import perception_models.core.vision_encoder.transforms as pe_transforms
-except ModuleNotFoundError:
-    repo_root_pm = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "perception_models")
-    )
-    if repo_root_pm not in sys.path:
-        sys.path.append(repo_root_pm)
-    import perception_models.core.vision_encoder.pe as pe
-    import perception_models.core.vision_encoder.transforms as pe_transforms
+import open_clip
 
 
 class FeatureExtractor(ABC):
@@ -77,14 +65,14 @@ class FeatureExtractor(ABC):
 
 class CLIPFeatureExtractor(FeatureExtractor):
     """
-    CLIP-based feature extractor for images and videos.
+    CLIP-based feature extractor for images and videos using open_clip.
     """
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
         Initialize the CLIPFeatureExtractor with configuration dict.
 
         Expected config keys (all optional):
-        - 'model_settings.clip_feature_model' or 'clip_feature_model' or 'model': model identifier for PE CLIP
+        - 'model_settings.clip_feature_model' or 'clip_feature_model' or 'model': model identifier for open_clip
         - 'device': explicit device string
         """
         super().__init__(config)
@@ -93,14 +81,14 @@ class CLIPFeatureExtractor(FeatureExtractor):
             self.config.get('model_settings', {}).get('clip_feature_model')
             or self.config.get('clip_feature_model')
             or self.config.get('model')
-            or "PE-Core-L14-336"
+            or "ViT-B-32"
         )
         device_str = self.config.get("device")
         self.device = torch.device(device_str) if device_str else torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = pe.CLIP.from_config(model_name, pretrained=True)
+        self.model, self.preprocess, _ = open_clip.create_model_and_transforms(model_name, pretrained='laion2b_s34b_b79k')
         self.model.to(self.device)
-        self.image_preprocess = pe_transforms.get_image_transform(self.model.image_size)
-        self.tokenizer = pe_transforms.get_text_tokenizer(self.model.context_length)
+        self.model.eval()
+        self.tokenizer = open_clip.get_tokenizer(model_name)
 
     def extract_image_features(self, images_data: List[Image.Image]) -> torch.Tensor:
         """
@@ -114,33 +102,28 @@ class CLIPFeatureExtractor(FeatureExtractor):
         """
         # Handle empty input
         if not images_data:
-            # Get feature dimension for CLIP visual model
-            feature_dim = self.model.visual.output_dim if hasattr(self.model, 'visual') and hasattr(self.model.visual, 'output_dim') else 512
+            # Get feature dimension for CLIP model (typically 512 for ViT-B-32)
+            feature_dim = 512
             return torch.empty((0, feature_dim), device=self.device)
             
         # Preprocess all images in the batch
         processed_images_list = []
         for img in images_data:
-            # The image_preprocess transforms PIL images to tensors
-            processed_tensor = self.image_preprocess(img)
-            # Ensure it's a tensor (this helps with type checking)
-            if isinstance(processed_tensor, torch.Tensor):
-                processed_images_list.append(processed_tensor)
-            else:
-                # In case it's not already a tensor, convert it (shouldn't happen with proper preprocess)
-                processed_images_list.append(torch.tensor(processed_tensor))
+            # The preprocess transforms PIL images to tensors
+            processed_tensor = self.preprocess(img)
+            processed_images_list.append(processed_tensor)
         
         # Stack the tensors into a batch
         batch_image_tensors = torch.stack(processed_images_list).to(self.device)
         
         # Encode images
-        with torch.no_grad():
-            batch_features = self.model.encode_image(batch_image_tensors)
+        with torch.no_grad(), torch.autocast("cuda" if torch.cuda.is_available() else "cpu"):
+            image_features = self.model.encode_image(batch_image_tensors)
             
         # Normalize features
-        batch_features /= batch_features.norm(dim=-1, keepdim=True)
+        image_features /= image_features.norm(dim=-1, keepdim=True)
         
-        return batch_features
+        return image_features
 
 
     def extract_text_features(self, text_prompts: List[str]) -> torch.Tensor:
@@ -154,39 +137,34 @@ class CLIPFeatureExtractor(FeatureExtractor):
             torch.Tensor: Extracted text features
         """
         text_inputs = self.tokenizer(text_prompts).to(self.device)
-        with torch.no_grad():
+        with torch.no_grad(), torch.autocast("cuda" if torch.cuda.is_available() else "cpu"):
             text_features = self.model.encode_text(text_inputs)
-        # Ensure we return a Tensor, not a tuple
-        if isinstance(text_features, tuple):
-            text_features = text_features[0]
+        # Normalize features
+        text_features /= text_features.norm(dim=-1, keepdim=True)
         return text_features
 
-    def calculate_similarity(self, image_features: torch.Tensor, text_features: torch.Tensor) -> np.ndarray:
+    def calculate_similarity(self, features1: torch.Tensor, features2: torch.Tensor) -> np.ndarray:
         """
-        Calculate similarity between image/video features and text features.
+        Calculate similarity between two feature sets.
         
         Args:
-            image_features: Image or video features
-            text_features: Text features
+            features1: First set of features
+            features2: Second set of features
             
         Returns:
             np.ndarray: Similarity scores
         """
         # Normalize features
-        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+        features1 = features1 / features1.norm(dim=-1, keepdim=True)
+        features2 = features2 / features2.norm(dim=-1, keepdim=True)
         
         # Calculate similarity
-        text_probs = (100.0 * image_features @ text_features.T).softmax(dim=-1)
+        similarity = (100.0 * features1 @ features2.T).softmax(dim=-1)
         
         # Return probabilities
-        # If the input was for a single image (shape [1, D]), return text_probs[0]
-        if image_features.shape[0] == 1:
-            return text_probs.cpu().numpy()[0]
-        return text_probs.cpu().numpy()
+        # If the input was for a single feature (shape [1, D]), return similarity[0]
+        if features1.shape[0] == 1:
+            return similarity.cpu().numpy()[0]
+        return similarity.cpu().numpy()
 
 
-# Registry for feature extractors
-FEATURE_EXTRACTOR_REGISTRY = {
-    "clip_pe": CLIPFeatureExtractor,
-}
