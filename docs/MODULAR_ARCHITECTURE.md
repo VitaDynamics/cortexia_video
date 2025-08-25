@@ -61,9 +61,6 @@ Usage patterns:
 
 - Features and gates: Use hubs to auto-register classes on import.
 
-  - Feature: `from cortexia.core.typed_registry import feature_hub; @feature_hub.decorator("my_feature", default_config={...})`
-  - Gate: `from cortexia.core.typed_registry import gate_hub; @gate_hub.decorator("my_gate", default_config={...})`
-
 - Inner registries (e.g., captioners, listers): Create a registry and decorate implementations.
 
   - Define registry: `MY_REG = create_registry("my_kind")`
@@ -72,7 +69,6 @@ Usage patterns:
 Example (captioners):
 
 ```
-from cortexia.core.typed_registry import get_model_hub
 
 IMAGE_CAPTIONER_REGISTRY = get_model_hub("image_captioner")
 

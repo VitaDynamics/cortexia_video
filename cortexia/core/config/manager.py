@@ -9,7 +9,7 @@ import yaml
 from cortexia.features.listing.models import OBJECT_LISTER_REGISTRY
 from cortexia.features.caption.models import IMAGE_CAPTIONER_REGISTRY
 
-
+# TODO: Need refactor
 class ConfigManager:
     """Handles loading and accessing configuration from TOML, YAML or JSON files."""
 

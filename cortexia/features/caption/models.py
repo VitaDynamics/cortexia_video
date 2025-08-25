@@ -4,7 +4,6 @@ from typing import Any
 import numpy as np
 from PIL import Image
 from transformers import AutoModelForCausalLM
-from ...core.typed_registry import get_model_hub
 
 
 class ImageCaptioner(ABC):
@@ -18,10 +17,6 @@ class ImageCaptioner(ABC):
         """Return a caption describing the given image."""
         pass
 
-# Model hub for captioners (decorator-friendly)
-IMAGE_CAPTIONER_REGISTRY = get_model_hub("image_captioner")
-
-@IMAGE_CAPTIONER_REGISTRY.decorator("vikhyatk/moondream2", aliases=["moondream2", "moon2"])
 class MoonDreamCaptioner(ImageCaptioner):
     """Captioner that uses the MoonDream2 VLM."""
 

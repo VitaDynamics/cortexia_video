@@ -8,9 +8,8 @@ from ..base import BaseFeature
 from ...api.exceptions import ModelLoadError, ProcessingError
 from ...data.models.video import VideoFramePacket
 from ...data.models.result.tagging_result import TaggingResult
-from .models import OBJECT_LISTER_REGISTRY
-
 from ..registry import feature_registry
+from .models import MoonDreamLister
 
 @feature_registry.register("listing")
 class ListingFeature(BaseFeature):
@@ -25,19 +24,9 @@ class ListingFeature(BaseFeature):
         try:
             # Get model configuration
             model_name = self.get_config_param("model", "vikhyatk/moondream2")
-            
-            # Find appropriate ObjectLister class
-            lister_class = None
-            for registry_key, lister_cls in OBJECT_LISTER_REGISTRY.items():
-                if registry_key in model_name:
-                    lister_class = lister_cls
-                    break
-            
-            if lister_class is None:
-                raise ValueError(f"Unsupported listing model: {model_name}. Available models: {list(OBJECT_LISTER_REGISTRY.keys())}")
-            
+
             # Initialize ObjectLister with the same config dict
-            self.lister = lister_class(self.config)
+            self.lister = MoonDreamLister(self.config)
             
             self.initialized = True
             
@@ -53,21 +42,22 @@ class ListingFeature(BaseFeature):
     def description(self) -> str:
         return "Object listing using various vision-language models"
     
-    def process_frame(self, frame: VideoFramePacket, **inputs) -> ListingResult:
+    def process_frame(self, frame: VideoFramePacket, **inputs) -> TaggingResult:
         """
         Process a single frame for object listing.
         
         Args:
-            frame_data: Frame data containing RGB image
+            frame: VideoFramePacket containing RGB frame data
+            **inputs: Additional inputs (not used by listing)
             
         Returns:
-            Frame data with listing results added
+            TaggingResult containing list of detected objects
         """
         if not self.is_ready():
             raise ProcessingError("Listing feature not initialized")
         
         if frame.frame_data is None:
-            return frame_data
+            return TaggingResult(tags=[])
         
         try:
             # Convert numpy array to PIL Image
@@ -76,14 +66,12 @@ class ListingFeature(BaseFeature):
             # Run listing
             objects = self._list_objects(image)
             
-            # Add listing results to frame data
-            frame.add_annotation_result('lister_results', objects)
-            
-            # Generate DINO prompt for detection
-            if objects:
-                frame.add_annotation_result('dino_prompt', ". ".join(objects) + ".")
-            
-            return frame_data
+            # Create and return TaggingResult
+            return TaggingResult(
+                tags=objects,
+                model_name=self.get_config_param("model", "vikhyatk/moondream2"),
+                raw_response=". ".join(objects) + "." if objects else ""
+            )
             
         except Exception as e:
             raise ProcessingError(f"Error in listing processing: {e}")
@@ -93,38 +81,44 @@ class ListingFeature(BaseFeature):
         Process multiple frames for object listing.
         
         Args:
-            frames: List of frame data objects
+            frames: List of VideoFramePacket objects
+            **inputs: Additional inputs (not used by listing)
             
         Returns:
-            List of frame data with listing results added
+            List of TaggingResult objects
         """
         if not self.is_ready():
             raise ProcessingError("Listing feature not initialized")
         
         # Filter frames with RGB images
-        valid_frames = [f for f in frames if f.rgb_image is not None]
+        valid_frames = [f for f in frames if f.frame_data is not None]
         
         if not valid_frames:
-            return frames
+            return [TaggingResult(tags=[]) for _ in frames]
         
         try:
             # Convert to PIL Images
-            images = [Image.fromarray(f.rgb_image) for f in valid_frames]
+            images = [Image.fromarray(f.frame_data) for f in valid_frames]
             
             # Run batch listing
             batch_objects = self._list_objects_batch(images)
             
-            # Add results back to frames
-            for i, frame in enumerate(valid_frames):
-                if i < len(batch_objects):
-                    objects = batch_objects[i]
-                    frame.lister_results = objects
-                    
-                    # Generate DINO prompt
-                    if objects:
-                        frame.dino_prompt = ". ".join(objects) + "."
+            # Create TaggingResult objects
+            results = []
+            valid_idx = 0
+            for frame in frames:
+                if frame.frame_data is not None and valid_idx < len(batch_objects):
+                    objects = batch_objects[valid_idx]
+                    results.append(TaggingResult(
+                        tags=objects,
+                        model_name=self.get_config_param("model", "vikhyatk/moondream2"),
+                        raw_response=". ".join(objects) + "." if objects else ""
+                    ))
+                    valid_idx += 1
+                else:
+                    results.append(TaggingResult(tags=[]))
             
-            return frames
+            return results
             
         except Exception as e:
             raise ProcessingError(f"Error in batch listing processing: {e}")
@@ -151,5 +145,7 @@ class ListingFeature(BaseFeature):
         Returns:
             List of object lists for each image
         """
-        return self.lister.list_objects_in_image_batched(images)
-    
+        results = []
+        for image in images:
+            results.append(self.lister.list_objects_in_image(image))
+        return results

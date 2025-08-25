@@ -10,7 +10,7 @@ from ..data.models.video import VideoFramePacket
 from ..data.models.result.gate_result import GateResult
 from .registry import gate_registry
 
-@gate_registry.register("grid")
+@gate_registry.register("hash")
 class HashGate(BaseGate[GateResult]):
     DEFAULT_HASH_TYPE = "phash"
     DEFAULT_HASH_SIZE = 8

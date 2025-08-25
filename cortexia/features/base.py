@@ -1,18 +1,13 @@
 """Base class for all annotation features"""
 
 from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
-from ..api.exceptions import CortexiaError, ProcessingError
+from ..api.exceptions import ProcessingError
 from ..data.models.video import VideoFramePacket
 from ..data.models.result.base_result import BaseResult
 from ..data.models.field_validation import FrameField, validate_frame_requirements
-from ..core.registry import Registry
-from .registry import feature_registry
 
-
-@feature_registry.register("base")
 class BaseFeature(ABC):
     """
     Base class for all independent annotation features.

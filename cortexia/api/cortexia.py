@@ -1,161 +1,97 @@
-"""Main Cortexia SDK class"""
+"""Main Cortexia Video SDK API
 
-import os
-from typing import Any, Dict, List, Optional, Type, Union
+This module provides a unified interface to access all features and gates
+from the cortexia package through registries.
+"""
 
-from ..core.registry import Registry 
-from ..core.config.manager import ConfigManager
-from .exceptions import CortexiaError, FeatureNotFoundError
+from .cortexia_sdk import Cortexia
+from ..features import feature_registry
+from ..gates import gate_registry
+
+__all__ = [
+    "Cortexia",
+    "feature_registry",
+    "gate_registry",
+    "get_feature",
+    "get_gate",
+    "list_features",
+    "list_gates",
+    "create_feature",
+    "create_gate",
+]
 
 
-class Cortexia:
+def get_feature(name: str):
+    """Get a feature class by name from the feature registry.
+    
+    Args:
+        name: The feature name (e.g., "caption", "detection", "depth")
+        
+    Returns:
+        The feature class
+        
+    Raises:
+        KeyError: If the feature is not found
     """
-    Main entry point for the Cortexia Video SDK.
+    return feature_registry.require(name)
+
+
+def get_gate(name: str):
+    """Get a gate class by name from the gate registry.
     
-    Provides access to independent annotation features through a registry system.
+    Args:
+        name: The gate name (e.g., "blur", "entropy", "clip")
+        
+    Returns:
+        The gate class
+        
+    Raises:
+        KeyError: If the gate is not found
     """
+    return gate_registry.require(name)
+
+
+def list_features():
+    """List all available feature names.
     
-    def __init__(self, config: Optional[Union[str, Dict[str, Any]]] = None):
-        """
-        Initialize Cortexia SDK.
+    Returns:
+        List of feature names
+    """
+    return list(feature_registry.keys())
+
+
+def list_gates():
+    """List all available gate names.
+    
+    Returns:
+        List of gate names
+    """
+    return list(gate_registry.keys())
+
+
+def create_feature(name: str, **kwargs):
+    """Create a feature instance by name.
+    
+    Args:
+        name: The feature name
+        **kwargs: Arguments to pass to the feature constructor
         
-        Args:
-            config: Configuration file path or dictionary
-        """
-        # Initialize configuration
-        if isinstance(config, str):
-            self.config_manager = ConfigManager(config_file_path=config)
-        elif isinstance(config, dict):
-            self.config_manager = ConfigManager()
-            self.config_manager.config_data = config
-        else:
-            self.config_manager = ConfigManager()
+    Returns:
+        Feature instance
+    """
+    feature_class = get_feature(name)
+    return feature_class(**kwargs)
+
+
+def create_gate(name: str, **kwargs):
+    """Create a gate instance by name.
+    
+    Args:
+        name: The gate name
+        **kwargs: Arguments to pass to the gate constructor
         
-        # Load configuration if file path provided
-        if isinstance(config, str):
-            self.config_manager.load_config()
-        
-        # Initialize feature registry
-        self.registry = FeatureRegistry(self.config_manager)
-        self._register_default_features()
-    
-    @classmethod
-    def from_config(cls, config_path: str) -> "Cortexia":
-        """
-        Create Cortexia instance from configuration file.
-        
-        Args:
-            config_path: Path to configuration file
-            
-        Returns:
-            Cortexia instance
-        """
-        return cls(config=config_path)
-    
-    @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> "Cortexia":
-        """
-        Create Cortexia instance from configuration dictionary.
-        
-        Args:
-            config_dict: Configuration dictionary
-            
-        Returns:
-            Cortexia instance
-        """
-        return cls(config=config_dict)
-    
-    def _register_default_features(self):
-        """Register default features"""
-        # Import here to avoid circular imports
-        from ..features.detection.detector import DetectionFeature
-        from ..features.segmentation.segmenter import SegmentationFeature
-        from ..features.description.describer import DescriptionFeature
-        from ..features.listing.lister import ListingFeature
-        from ..features.feature_extraction.extractor import FeatureExtractionFeature
-        from ..features.caption.captioner import CaptionFeature
-        from ..features.depth.estimator import DepthFeature
-        
-        # Register features
-        self.registry.register("detection", DetectionFeature)
-        self.registry.register("segmentation", SegmentationFeature)
-        self.registry.register("description", DescriptionFeature)
-        self.registry.register("listing", ListingFeature)
-        self.registry.register("feature_extraction", FeatureExtractionFeature)
-        self.registry.register("caption", CaptionFeature)
-        self.registry.register("depth", DepthFeature)
-    
-    def detection(self):
-        """Get detection feature instance"""
-        return self.registry.get_feature("detection")
-    
-    def segmentation(self):
-        """Get segmentation feature instance"""
-        return self.registry.get_feature("segmentation")
-    
-    def description(self):
-        """Get description feature instance"""
-        return self.registry.get_feature("description")
-    
-    def listing(self):
-        """Get listing feature instance"""
-        return self.registry.get_feature("listing")
-    
-    def feature_extraction(self):
-        """Get feature extraction instance"""
-        return self.registry.get_feature("feature_extraction")
-    
-    def caption(self):
-        """Get caption feature instance"""
-        return self.registry.get_feature("caption")
-    
-    def depth(self):
-        """Get depth estimation feature instance"""
-        return self.registry.get_feature("depth")
-    
-    def get_feature(self, name: str):
-        """
-        Get feature instance by name.
-        
-        Args:
-            name: Feature name
-            
-        Returns:
-            Feature instance
-            
-        Raises:
-            FeatureNotFoundError: If feature not found
-        """
-        return self.registry.get_feature(name)
-    
-    def list_features(self) -> List[str]:
-        """
-        List available features.
-        
-        Returns:
-            List of feature names
-        """
-        return self.registry.list_features()
-    
-    def process_video_with_features(self, video_path: str, features: List[str]) -> List[Any]:
-        """
-        Process video with specified features.
-        
-        Args:
-            video_path: Path to video file
-            features: List of feature names to apply
-            
-        Returns:
-            List of processed results
-        """
-        # This is a convenience method for processing video with multiple features
-        # Each feature is applied independently to each frame
-        results = []
-        
-        for feature_name in features:
-            feature = self.get_feature(feature_name)
-            # Process video with this feature
-            # Implementation will depend on video loading utilities
-            pass
-        
-        return results
+    Returns:
+        Gate instance
+    """
+    gate_class = get_gate(name)
+    return gate_class(**kwargs)

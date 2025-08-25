@@ -48,20 +48,21 @@ class DepthFeature(BaseFeature):
         Process a single frame for depth estimation.
         
         Args:
-            frame_data: Frame data containing RGB image
+            frame: VideoFramePacket containing RGB frame data
+            **inputs: Additional inputs (not used by depth estimation)
             
         Returns:
-            Frame data with depth map added
+            DepthResult containing depth map and statistics
         """
         if not self.is_ready():
             raise ProcessingError("Depth feature not initialized")
         
         if frame.frame_data is None:
-            return frame_data
+            return DepthResult(depth_map=np.array([]))
         
         try:
             # Convert numpy array to PIL Image
-            image = Image.fromarray(frame_data.rgb_image)
+            image = Image.fromarray(frame.frame_data)
             
             # Estimate depth using batch method for single image
             results = self.estimator.estimate_batch_depth([image])
@@ -71,10 +72,7 @@ class DepthFeature(BaseFeature):
                 depth_map = result["depth"]
                 focal_length = result.get("focallength_px")
                 
-                # Add depth data to frame
-                frame.add_annotation_result('depth_map', depth_map)
-                
-                # Add depth statistics
+                # Calculate depth statistics
                 depth_stats = {
                     "mean_depth": float(np.mean(depth_map)),
                     "min_depth": float(np.min(depth_map)),
@@ -84,9 +82,15 @@ class DepthFeature(BaseFeature):
                 if focal_length is not None:
                     depth_stats["focal_length_px"] = float(focal_length)
                 
-                frame_data.depth_statistics = depth_stats
-            
-            return frame_data
+                # Create and return DepthResult
+                return DepthResult(
+                    depth_map=depth_map,
+                    depth_statistics=depth_stats,
+                    focal_length=float(focal_length) if focal_length is not None else None,
+                    model_name="DepthPro"
+                )
+            else:
+                return DepthResult(depth_map=np.array([]))
             
         except Exception as e:
             raise ProcessingError(f"Error in depth estimation processing: {e}")
@@ -96,37 +100,38 @@ class DepthFeature(BaseFeature):
         Process multiple frames for depth estimation.
         
         Args:
-            frames: List of frame data objects
+            frames: List of VideoFramePacket objects
+            **inputs: Additional inputs (not used by depth estimation)
             
         Returns:
-            List of frame data with depth maps added
+            List of DepthResult objects
         """
         if not self.is_ready():
             raise ProcessingError("Depth feature not initialized")
         
         # Filter frames with RGB images
-        valid_frames = [f for f in frames if f.rgb_image is not None]
+        valid_frames = [f for f in frames if f.frame_data is not None]
         
         if not valid_frames:
-            return frames
+            return [DepthResult(depth_map=np.array([])) for _ in frames]
         
         try:
             # Convert to PIL Images
-            images = [Image.fromarray(f.rgb_image) for f in valid_frames]
+            images = [Image.fromarray(f.frame_data) for f in valid_frames]
             
             # Estimate depth for batch
             results = self.estimator.estimate_batch_depth(images)
             
-            # Add results back to frames
-            for i, frame in enumerate(valid_frames):
-                if i < len(results):
-                    result = results[i]
+            # Create DepthResult objects
+            depth_results = []
+            valid_idx = 0
+            for frame in frames:
+                if frame.frame_data is not None and valid_idx < len(results):
+                    result = results[valid_idx]
                     depth_map = result["depth"]
                     focal_length = result.get("focallength_px")
                     
-                    frame.depth_map = depth_map
-                    
-                    # Add depth statistics
+                    # Calculate depth statistics
                     depth_stats = {
                         "mean_depth": float(np.mean(depth_map)),
                         "min_depth": float(np.min(depth_map)),
@@ -136,9 +141,17 @@ class DepthFeature(BaseFeature):
                     if focal_length is not None:
                         depth_stats["focal_length_px"] = float(focal_length)
                     
-                    frame.depth_statistics = depth_stats
+                    depth_results.append(DepthResult(
+                        depth_map=depth_map,
+                        depth_statistics=depth_stats,
+                        focal_length=float(focal_length) if focal_length is not None else None,
+                        model_name="DepthPro"
+                    ))
+                    valid_idx += 1
+                else:
+                    depth_results.append(DepthResult(depth_map=np.array([])))
             
-            return frames
+            return depth_results
             
         except Exception as e:
             raise ProcessingError(f"Error in batch depth estimation processing: {e}")

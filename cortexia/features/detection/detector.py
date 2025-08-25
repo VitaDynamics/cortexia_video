@@ -54,7 +54,7 @@ class DetectionFeature(BaseFeature):
     def description(self) -> str:
         return "Object detection using Grounding DINO model"
     
-    def process_frame(self, frame: VideoFramePacket, **inputs) -> BaseResult:
+    def process_frame(self, frame: VideoFramePacket, **inputs) -> DetectionResult:
         """
         Process a single frame for object detection.
         
@@ -93,7 +93,7 @@ class DetectionFeature(BaseFeature):
         except Exception as e:
             raise ProcessingError(f"Error in detection processing: {e}")
     
-    def process_batch(self, frames: List[VideoFramePacket], **batch_inputs) -> List[BaseResult]:
+    def process_batch(self, frames: List[VideoFramePacket], **batch_inputs) -> List[DetectionResult]:
         """
         Process multiple frames for object detection.
         

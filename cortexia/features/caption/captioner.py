@@ -10,7 +10,7 @@ from ..base import BaseFeature
 from ...api.exceptions import ModelLoadError, ProcessingError
 from ...data.models.video import VideoFramePacket
 from ...data.models.result.caption_result import CaptionResult
-from .models import IMAGE_CAPTIONER_REGISTRY
+from .models import MoonDreamCaptioner
 from ..registry import feature_registry
 
 @feature_registry.register("caption")
@@ -30,11 +30,6 @@ class CaptionFeature(BaseFeature):
             # Get model configuration
             model_name = self.get_config_param("model", "vikhyatk/moondream2")
             
-            # Get captioner class from registry
-            captioner_class = IMAGE_CAPTIONER_REGISTRY.get(model_name)
-            if not captioner_class:
-                raise ModelLoadError(f"Model {model_name} not found in registry")
-            
             # Create config dict for the captioner
             captioner_config = {
                 "model": model_name,
@@ -44,8 +39,8 @@ class CaptionFeature(BaseFeature):
             }
             
             # Initialize captioner
-            self.captioner = captioner_class(captioner_config)
-            
+            self.captioner = MoonDreamCaptioner(captioner_config)
+
             self.initialized = True
             
         except Exception as e:
@@ -64,16 +59,17 @@ class CaptionFeature(BaseFeature):
         Process a single frame for image captioning.
         
         Args:
-            frame_data: Frame data containing RGB image
+            frame: VideoFramePacket containing RGB frame data
+            **inputs: Additional inputs (not used by captioning)
             
         Returns:
-            Frame data with caption added
+            CaptionResult containing the generated caption
         """
         if not self.is_ready():
             raise ProcessingError("Captioning feature not initialized")
         
         if frame.frame_data is None:
-            return frame_data
+            return CaptionResult(caption="")
         
         try:
             # Convert numpy array to PIL Image
@@ -82,10 +78,12 @@ class CaptionFeature(BaseFeature):
             # Generate caption
             caption = self.captioner.caption_image(image)
             
-            # Add caption to frame data
-            frame.add_annotation_result('caption', caption)
-            
-            return frame_data
+            # Create and return CaptionResult
+            return CaptionResult(
+                caption=caption,
+                model_name=self.get_config_param("model", "vikhyatk/moondream2"),
+                caption_length=self.get_config_param("caption_length", "long")
+            )
             
         except Exception as e:
             raise ProcessingError(f"Error in captioning processing: {e}")
@@ -95,33 +93,43 @@ class CaptionFeature(BaseFeature):
         Process multiple frames for image captioning.
         
         Args:
-            frames: List of frame data objects
+            frames: List of VideoFramePacket objects
+            **inputs: Additional inputs (not used by captioning)
             
         Returns:
-            List of frame data with captions added
+            List of CaptionResult objects
         """
         if not self.is_ready():
             raise ProcessingError("Captioning feature not initialized")
         
         # Filter frames with RGB images
-        valid_frames = [f for f in frames if f.rgb_image is not None]
+        valid_frames = [f for f in frames if f.frame_data is not None]
         
         if not valid_frames:
-            return frames
+            return [CaptionResult(caption="") for _ in frames]
         
         try:
             # Convert to PIL Images
-            images = [Image.fromarray(f.rgb_image) for f in valid_frames]
+            images = [Image.fromarray(f.frame_data) for f in valid_frames]
             
             # Generate batch captions
             batch_captions = [self.captioner.caption_image(img) for img in images]
             
-            # Add results back to frames
-            for i, frame in enumerate(valid_frames):
-                if i < len(batch_captions):
-                    frame.caption = batch_captions[i]
+            # Create CaptionResult objects
+            results = []
+            valid_idx = 0
+            for frame in frames:
+                if frame.frame_data is not None and valid_idx < len(batch_captions):
+                    results.append(CaptionResult(
+                        caption=batch_captions[valid_idx],
+                        model_name=self.get_config_param("model", "vikhyatk/moondream2"),
+                        caption_length=self.get_config_param("caption_length", "long")
+                    ))
+                    valid_idx += 1
+                else:
+                    results.append(CaptionResult(caption=""))
             
-            return frames
+            return results
             
         except Exception as e:
             raise ProcessingError(f"Error in batch captioning processing: {e}")

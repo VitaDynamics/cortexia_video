@@ -8,8 +8,7 @@ from PIL import Image
 
 from ..base import BaseFeature
 from ...api.exceptions import ModelLoadError, ProcessingError
-from ...data.models.detection_result import BoundingBox, DetectionResult
-from ...data.models.segmentation_result import SegmentationResult
+from ...data.models.result.detection_result import BoundingBox, DetectionResult
 from ...data.models.video import VideoFramePacket
 from ...data.models.result.segmentation_result import SegmentationResult
 from .models import ObjectSegmenter
@@ -57,43 +56,61 @@ class SegmentationFeature(BaseFeature):
         Process a single frame for object segmentation.
         
         Args:
-            frame_data: Frame data containing RGB image and detections
+            frame: VideoFramePacket containing RGB frame data and detections
+            **inputs: Additional inputs (not used by segmentation)
             
         Returns:
-            Frame data with segmentation results added
+            SegmentationResult containing segmentation masks
         """
         if not self.is_ready():
             raise ProcessingError("Segmentation feature not initialized")
         
         if frame.frame_data is None:
-            return frame_data
+            return SegmentationResult(
+                mask=np.array([]),
+                score=0.0,
+                label="",
+                area=0,
+                bbox=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)
+            )
         
         try:
             # Convert numpy array to PIL Image
-            image = Image.fromarray(frame_data.rgb_image)
+            image = Image.fromarray(frame.frame_data)
             
             # Extract bounding boxes from detections
             boxes = []
-            for detection in frame.annotations.detections if frame.annotations else []:
-                if detection.bbox:
-                    box = [detection.bbox.xmin, detection.bbox.ymin, 
-                           detection.bbox.xmax, detection.bbox.ymax]
-                    boxes.append(box)
+            detections = []
+            
+            # Check for detections in annotations
+            if hasattr(frame, 'annotations') and frame.annotations:
+                if hasattr(frame.annotations, 'detections') and frame.annotations.detections:
+                    detections = frame.annotations.detections
+                    for detection in detections:
+                        if detection.bbox:
+                            box = [detection.bbox.xmin, detection.bbox.ymin, 
+                                   detection.bbox.xmax, detection.bbox.ymax]
+                            boxes.append(box)
             
             # Run segmentation using ObjectSegmenter
             if boxes:
                 masks = self.segmenter.segment_object(image, boxes)
                 
                 # Create segmentation results
-                segments = self._create_segmentation_results(masks, boxes, frame.annotations.detections if frame.annotations else [])
+                segments = self._create_segmentation_results(masks, boxes, detections)
                 
-                # Add segments to frame data
-                frame.add_annotation_result('segments', segments)
-                
-                # Also add masks to detections for compatibility
-                self._add_masks_to_detections(segments, frame.annotations.detections if frame.annotations else [])
+                # Return first segment or empty result
+                if segments:
+                    return segments[0]
             
-            return frame_data
+            # Return empty result if no segments
+            return SegmentationResult(
+                mask=np.array([]),
+                score=0.0,
+                label="",
+                area=0,
+                bbox=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)
+            )
             
         except Exception as e:
             raise ProcessingError(f"Error in segmentation processing: {e}")
@@ -103,47 +120,91 @@ class SegmentationFeature(BaseFeature):
         Process multiple frames for object segmentation.
         
         Args:
-            frames: List of frame data objects
+            frames: List of VideoFramePacket objects
+            **inputs: Additional inputs (not used by segmentation)
             
         Returns:
-            List of frame data with segmentation results added
+            List of SegmentationResult objects
         """
         if not self.is_ready():
             raise ProcessingError("Segmentation feature not initialized")
         
         # Filter frames with RGB images
-        valid_frames = [f for f in frames if f.rgb_image is not None]
+        valid_frames = [f for f in frames if f.frame_data is not None]
         
         if not valid_frames:
-            return frames
+            return [SegmentationResult(
+                mask=np.array([]),
+                score=0.0,
+                label="",
+                area=0,
+                bbox=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)
+            ) for _ in frames]
         
         try:
             # Convert to PIL Images
-            images = [Image.fromarray(f.rgb_image) for f in valid_frames]
+            images = [Image.fromarray(f.frame_data) for f in valid_frames]
             
             # Extract bounding boxes from detections for each frame
             batch_boxes = []
+            batch_detections = []
             for frame in valid_frames:
                 frame_boxes = []
-                for detection in frame.detections:
-                    if detection.bbox:
-                        box = [detection.bbox.xmin, detection.bbox.ymin, 
-                               detection.bbox.xmax, detection.bbox.ymax]
-                        frame_boxes.append(box)
+                frame_detections = []
+                
+                # Check for detections in annotations
+                if hasattr(frame, 'annotations') and frame.annotations:
+                    if hasattr(frame.annotations, 'detections') and frame.annotations.detections:
+                        frame_detections = frame.annotations.detections
+                        for detection in frame_detections:
+                            if detection.bbox:
+                                box = [detection.bbox.xmin, detection.bbox.ymin, 
+                                       detection.bbox.xmax, detection.bbox.ymax]
+                                frame_boxes.append(box)
+                
                 batch_boxes.append(frame_boxes)
+                batch_detections.append(frame_detections)
             
             # Run batch segmentation
             batch_masks = self.segmenter.segment_object(images, batch_boxes)
             
-            # Add results back to frames
-            for i, frame in enumerate(valid_frames):
-                if i < len(batch_masks) and batch_boxes[i]:
-                    masks = batch_masks[i]
-                    segments = self._create_segmentation_results(masks, batch_boxes[i], frame.detections)
-                    frame.segments = segments
-                    self._add_masks_to_detections(segments, frame.detections)
+            # Create SegmentationResult objects
+            results = []
+            valid_idx = 0
+            for frame in frames:
+                if frame.frame_data is not None and valid_idx < len(batch_masks):
+                    masks = batch_masks[valid_idx]
+                    if batch_boxes[valid_idx]:
+                        segments = self._create_segmentation_results(masks, batch_boxes[valid_idx], batch_detections[valid_idx])
+                        if segments:
+                            results.append(segments[0])
+                        else:
+                            results.append(SegmentationResult(
+                                mask=np.array([]),
+                                score=0.0,
+                                label="",
+                                area=0,
+                                bbox=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)
+                            ))
+                    else:
+                        results.append(SegmentationResult(
+                            mask=np.array([]),
+                            score=0.0,
+                            label="",
+                            area=0,
+                            bbox=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)
+                        ))
+                    valid_idx += 1
+                else:
+                    results.append(SegmentationResult(
+                        mask=np.array([]),
+                        score=0.0,
+                        label="",
+                        area=0,
+                        bbox=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)
+                    ))
             
-            return frames
+            return results
             
         except Exception as e:
             raise ProcessingError(f"Error in batch segmentation processing: {e}")

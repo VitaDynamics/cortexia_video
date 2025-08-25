@@ -16,14 +16,8 @@ Design goals:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Iterator, List, Optional, Protocol, Sequence, Tuple, TypeVar
-from ..data.models.filter import FilterSpec, AndSpec, OrSpec, NotSpec
-
-
-import math
-
-import numpy as np
+from typing import Iterator, List, Optional, Sequence, Tuple, TypeVar
+from ..data.models.filter import FilterSpec
 
 
 T = TypeVar("T")  # Item type (e.g., GateResult or any record)

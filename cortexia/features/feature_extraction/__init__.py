@@ -1,5 +1,3 @@
 """Feature extraction module"""
 
-from .extractor import FeatureExtractionFeature
-
-__all__ = ["FeatureExtractionFeature"]
+# TODO: There is import bug here. 
