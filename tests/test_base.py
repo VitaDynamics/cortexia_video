@@ -16,8 +16,8 @@ from cortexia.api.exceptions import ProcessingError
 class MockResult(BaseResult):
     """Mock result class for testing"""
     
-    test_field: str
-    confidence: float = 0.5
+    def __init__(self, test_field: str, confidence: float = 0.5):
+        super().__init__(test_field=test_field, confidence=confidence)
     
     def _get_repr_fields(self) -> str:
         return f"test_field={self.test_field}, confidence={self.confidence}"
