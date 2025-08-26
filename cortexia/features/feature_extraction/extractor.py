@@ -50,7 +50,7 @@ class FeatureExtractionFeature(BaseFeature):
             Frame data with features added
         """
         if not self.is_ready():
-            raise ProcessingError("Feature extraction feature not initialized")
+            self._initialize()
         
         if frame.frame_data is None:
             return frame_data
@@ -84,7 +84,7 @@ class FeatureExtractionFeature(BaseFeature):
             List of frame data with features added
         """
         if not self.is_ready():
-            raise ProcessingError("Feature extraction feature not initialized")
+            self._initialize()
         
         # Filter frames with RGB images
         valid_frames = [f for f in frames if f.rgb_image is not None]

@@ -66,7 +66,7 @@ class DetectionFeature(BaseFeature):
             DetectionResult containing list of detections
         """
         if not self.is_ready():
-            raise ProcessingError("Detection feature not initialized")
+            self._initialize()
         
         if frame.frame_data is None or frame.frame_data.size == 0:
             return DetectionResult(score=0.0, label="", box=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0))
@@ -105,7 +105,7 @@ class DetectionFeature(BaseFeature):
             List of DetectionResult objects
         """
         if not self.is_ready():
-            raise ProcessingError("Detection feature not initialized")
+            self._initialize()
         
         # Filter frames with valid data
         valid_packets = [f for f in frames if f.frame_data is not None and f.frame_data.size > 0]

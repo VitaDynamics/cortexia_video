@@ -55,7 +55,7 @@ class DepthFeature(BaseFeature):
             DepthResult containing depth map and statistics
         """
         if not self.is_ready():
-            raise ProcessingError("Depth feature not initialized")
+            self._initialize()
         
         if frame.frame_data is None:
             return DepthResult(depth_map=np.array([]))
@@ -106,8 +106,9 @@ class DepthFeature(BaseFeature):
         Returns:
             List of DepthResult objects
         """
+            
         if not self.is_ready():
-            raise ProcessingError("Depth feature not initialized")
+            self._initialize()
         
         # Filter frames with RGB images
         valid_frames = [f for f in frames if f.frame_data is not None]

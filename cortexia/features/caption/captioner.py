@@ -26,6 +26,9 @@ class CaptionFeature(BaseFeature):
     
     def _initialize(self):
         """Initialize captioning model"""
+        if self.initialized:
+            return
+            
         try:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             
@@ -68,6 +71,9 @@ class CaptionFeature(BaseFeature):
             CaptionResult containing the generated caption
         """
         if not self.is_ready():
+            self._initialize()
+        
+        if not self.is_ready():
             raise ProcessingError("Captioning feature not initialized")
         
         if frame.frame_data is None:
@@ -101,6 +107,9 @@ class CaptionFeature(BaseFeature):
         Returns:
             List of CaptionResult objects
         """
+        if not self.is_ready():
+            self._initialize()
+        
         if not self.is_ready():
             raise ProcessingError("Captioning feature not initialized")
         

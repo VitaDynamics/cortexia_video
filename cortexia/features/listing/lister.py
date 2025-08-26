@@ -54,7 +54,7 @@ class ListingFeature(BaseFeature):
             TaggingResult containing list of detected objects
         """
         if not self.is_ready():
-            raise ProcessingError("Listing feature not initialized")
+            self._initialize()
         
         if frame.frame_data is None:
             return TaggingResult(tags=[])
@@ -88,7 +88,7 @@ class ListingFeature(BaseFeature):
             List of TaggingResult objects
         """
         if not self.is_ready():
-            raise ProcessingError("Listing feature not initialized")
+            self._initialize()
         
         # Filter frames with RGB images
         valid_frames = [f for f in frames if f.frame_data is not None]

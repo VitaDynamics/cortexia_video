@@ -32,7 +32,6 @@ class BaseFeature(ABC):
         super().__init__()  
         self.config = config or {}
         self.initialized = False
-        self._initialize()
         
         # Validate that subclass defined required attributes
         if self.__class__.output_schema is None:

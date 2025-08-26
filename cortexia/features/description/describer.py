@@ -42,7 +42,7 @@ class DescriptionFeature(BaseFeature):
     def process_frame(self, frame: VideoFramePacket, **inputs) -> DescriptionResult:
         """Process a single frame for object description."""
         if not self.is_ready():
-            raise ProcessingError("Description feature not initialized")
+            self._initialize()
 
         if frame.frame_data is None:
             return frame
