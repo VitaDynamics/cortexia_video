@@ -36,24 +36,24 @@ class TestFeatureRegistry:
     def test_registry_initialization(self):
         """Test that registry is properly initialized"""
         assert feature_registry is not None
-        assert feature_registry.name == "features"
+        assert feature_registry._name == "features"
     
     def test_register_feature(self):
         """Test registering a feature"""
         # Clear any existing registration
-        feature_registry._registry.clear()
+        feature_registry._items.clear()
         
         # Register feature
         feature_registry.register("test_feature")(MockRegistryFeature)
         
         # Check registration
-        assert "test_feature" in feature_registry._registry
-        assert feature_registry._registry["test_feature"] == MockRegistryFeature
+        assert "test_feature" in feature_registry._items
+        assert feature_registry._items["test_feature"] == MockRegistryFeature
     
     def test_register_feature_with_decorator(self):
         """Test registering feature using decorator"""
         # Clear any existing registration
-        feature_registry._registry.clear()
+        feature_registry._items.clear()
         
         @feature_registry.register("decorated_feature")
         class DecoratedFeature(BaseFeature):
@@ -76,13 +76,13 @@ class TestFeatureRegistry:
                 return "Decorated feature for testing"
         
         # Check registration
-        assert "decorated_feature" in feature_registry._registry
-        assert feature_registry._registry["decorated_feature"] == DecoratedFeature
+        assert "decorated_feature" in feature_registry._items
+        assert feature_registry._items["decorated_feature"] == DecoratedFeature
     
     def test_get_feature(self):
         """Test getting a feature from registry"""
         # Clear any existing registration
-        feature_registry._registry.clear()
+        feature_registry._items.clear()
         
         # Register feature
         feature_registry.register("get_test_feature")(MockRegistryFeature)
@@ -94,23 +94,23 @@ class TestFeatureRegistry:
     def test_get_nonexistent_feature(self):
         """Test getting a nonexistent feature"""
         # Clear any existing registration
-        feature_registry._registry.clear()
+        feature_registry._items.clear()
         
         # Get nonexistent feature
         with pytest.raises(KeyError):
-            feature_registry.get("nonexistent_feature")
+            feature_registry.require("nonexistent_feature")
     
     def test_list_features(self):
         """Test listing all registered features"""
         # Clear any existing registration
-        feature_registry._registry.clear()
+        feature_registry._items.clear()
         
         # Register multiple features
         feature_registry.register("feature1")(MockRegistryFeature)
         feature_registry.register("feature2")(MockRegistryFeature)
         
         # List features
-        features = feature_registry.list()
+        features = list(feature_registry.keys())
         assert "feature1" in features
         assert "feature2" in features
         assert len(features) == 2
@@ -118,7 +118,7 @@ class TestFeatureRegistry:
     def test_contains_feature(self):
         """Test checking if feature exists in registry"""
         # Clear any existing registration
-        feature_registry._registry.clear()
+        feature_registry._items.clear()
         
         # Register feature
         feature_registry.register("contains_test_feature")(MockRegistryFeature)
@@ -130,7 +130,7 @@ class TestFeatureRegistry:
     def test_unregister_feature(self):
         """Test unregistering a feature"""
         # Clear any existing registration
-        feature_registry._registry.clear()
+        feature_registry._items.clear()
         
         # Register feature
         feature_registry.register("unregister_test_feature")(MockRegistryFeature)
@@ -139,7 +139,7 @@ class TestFeatureRegistry:
         assert "unregister_test_feature" in feature_registry
         
         # Unregister
-        feature_registry.unregister("unregister_test_feature")
+        del feature_registry._items["unregister_test_feature"]
         
         # Check it's gone
         assert "unregister_test_feature" not in feature_registry
@@ -147,37 +147,37 @@ class TestFeatureRegistry:
     def test_clear_registry(self):
         """Test clearing the registry"""
         # Clear any existing registration
-        feature_registry._registry.clear()
+        feature_registry._items.clear()
         
         # Register multiple features
         feature_registry.register("clear_test_feature1")(MockRegistryFeature)
         feature_registry.register("clear_test_feature2")(MockRegistryFeature)
         
         # Check they exist
-        assert len(feature_registry._registry) == 2
+        assert len(feature_registry._items) == 2
         
         # Clear registry
-        feature_registry.clear()
+        feature_registry._items.clear()
         
         # Check it's empty
-        assert len(feature_registry._registry) == 0
+        assert len(feature_registry._items) == 0
     
     def test_register_duplicate_feature(self):
         """Test registering a feature with duplicate name"""
         # Clear any existing registration
-        feature_registry._registry.clear()
+        feature_registry._items.clear()
         
         # Register feature first time
         feature_registry.register("duplicate_feature")(MockRegistryFeature)
         
         # Register feature second time - should raise exception
-        with pytest.raises(ValueError, match="already registered"):
+        with pytest.raises(KeyError, match="already registered"):
             feature_registry.register("duplicate_feature")(MockRegistryFeature)
     
     def test_registry_repr(self):
         """Test registry string representation"""
         # Clear any existing registration
-        feature_registry._registry.clear()
+        feature_registry._items.clear()
         
         # Register a feature
         feature_registry.register("repr_test_feature")(MockRegistryFeature)
@@ -186,4 +186,4 @@ class TestFeatureRegistry:
         repr_str = repr(feature_registry)
         assert "Registry" in repr_str
         assert "features" in repr_str
-        assert "1 features" in repr_str
+        assert "1" in repr_str

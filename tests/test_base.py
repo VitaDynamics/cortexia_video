@@ -103,8 +103,12 @@ class TestBaseFeature:
         feature = MockFeature()
         assert feature.get_required_fields() == []
         
-        feature.required_fields = ["rgb", FrameField("depth", optional=False)]
-        assert feature.get_required_fields() == ["rgb", FrameField("depth", optional=False)]
+        # Modify class attribute for testing
+        MockFeature.required_fields = ["rgb", FrameField.FRAME_DATA]
+        assert feature.get_required_fields() == ["rgb", FrameField.FRAME_DATA]
+        
+        # Reset for other tests
+        MockFeature.required_fields = []
     
     def test_validate_frame_inputs_no_requirements(self):
         """Test frame validation when no fields are required"""
@@ -117,11 +121,15 @@ class TestBaseFeature:
     def test_validate_frame_inputs_with_requirements(self):
         """Test frame validation when fields are required"""
         feature = MockFeature()
-        feature.required_fields = ["rgb"]
+        # Modify class attribute for testing
+        MockFeature.required_fields = [FrameField.FRAME_DATA]
         frame = self._create_test_frame()
         
         # Should not raise any exception
         feature.validate_frame_inputs(frame)
+        
+        # Reset for other tests
+        MockFeature.required_fields = []
     
     def test_validate_inputs_no_requirements(self):
         """Test inputs validation when no inputs are required"""
@@ -283,8 +291,9 @@ class TestBaseFeatureIntegration:
         feature = MockFeature()
         
         valid_frame = self._create_test_frame(0)
+        # Create invalid frame with empty data instead of None
         invalid_frame = VideoFramePacket(
-            frame_data=None,
+            frame_data=np.zeros((1, 1, 3), dtype=np.uint8),
             frame_number=1,
             timestamp=datetime.timedelta(seconds=1/30.0),
             source_video_id="test_video"

@@ -15,6 +15,7 @@ from .registry import gate_registry
 @gate_registry.register("entropy")
 class EntropyGate(BaseGate[GateResult]):
     DEFAULT_THRESHOLD = 4.0  # Class attribute for default entropy threshold
+    output_schema = GateResult
 
     def __init__(
         self, threshold: Optional[float] = None, session_id: str = "default_session"
@@ -84,7 +85,7 @@ class EntropyGate(BaseGate[GateResult]):
             score=float(entropy_score),
             threshold=self.threshold,
             metadata={
-                "is_low_entropy": is_low_entropy,
+                "is_low_entropy": bool(is_low_entropy),  # Convert np.bool_ to Python bool
                 "entropy_score": float(entropy_score),
             }
         )

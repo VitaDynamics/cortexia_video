@@ -21,6 +21,8 @@ from .registry import schema_registry
 
     
 # TODO: should support all optional of result in result folder. 
+# TODO: we also need to support actions (future action seuquence in build on this frame. Or as a Windows)
+# TODO: How does action look like? Numpy array is a good start point. 
 
 @schema_registry.register("video.frame_packet")
 @dataclass

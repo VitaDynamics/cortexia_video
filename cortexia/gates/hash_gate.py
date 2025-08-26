@@ -12,6 +12,7 @@ from .registry import gate_registry
 
 @gate_registry.register("hash")
 class HashGate(BaseGate[GateResult]):
+    output_schema = GateResult
     DEFAULT_HASH_TYPE = "phash"
     DEFAULT_HASH_SIZE = 8
     DEFAULT_HIGHFREQ_FACTOR = 4

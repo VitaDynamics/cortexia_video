@@ -17,6 +17,8 @@ from ..registry import feature_registry
 class CaptionFeature(BaseFeature):
     """Image captioning feature using vision-language models"""
     
+    output_schema = CaptionResult
+    
     def __init__(self, config=None):
         super().__init__(config)
         self.captioner = None

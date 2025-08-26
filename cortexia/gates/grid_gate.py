@@ -11,6 +11,7 @@ from .registry import gate_registry
 
 @gate_registry.register("grid")
 class GridGate(BaseGate[GateResult]):
+    output_schema = GateResult
     DEFAULT_GRID_ROWS = 4
     DEFAULT_GRID_COLS = 4
     DEFAULT_CELL_HASH_SIZE = 8

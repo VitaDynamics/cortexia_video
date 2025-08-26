@@ -22,7 +22,7 @@ class BaseGate(Generic[T], ABC):
     """
     
     # Class attributes that subclasses should define
-    output_schema: Type[BaseResult] = GateResult  # Default to GateResult
+    output_schema: Type[BaseResult] = None  # Must be defined by subclasses
     required_inputs: List[str] = []  # List of required input schema names
     required_fields: List[Union[str, FrameField]] = []  # List of required VideoFramePacket fields
     

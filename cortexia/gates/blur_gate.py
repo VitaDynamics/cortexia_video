@@ -12,6 +12,8 @@ from .registry import gate_registry
 
 @gate_registry.register("blur")
 class BlurGate(BaseGate[GateResult]):
+    output_schema = GateResult
+    
     def __init__(self, session_id: str = "default_session"):
         """Initialize the BlurGate as a pure metric calculator."""
         self.logger = logging.getLogger(f"Decimatr.{self.__class__.__name__}")

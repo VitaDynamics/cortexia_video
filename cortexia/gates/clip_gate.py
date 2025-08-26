@@ -23,6 +23,7 @@ class ClipGate(BaseGate[GateResult]):
 
     Note: This implementation depends on an external CLIP package.
     """
+    output_schema = GateResult
 
     def __init__(
         self,
