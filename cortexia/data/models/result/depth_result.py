@@ -11,11 +11,11 @@ from ..registry import schema_registry
 class DepthResult(BaseResult):
     """Result schema for depth estimation operations."""
     
-    depth_map: np.ndarray  # The depth map as numpy array
-    depth_statistics: Optional[Dict[str, float]] = None  # min, max, mean, std, etc.
-    model_name: Optional[str] = None
-    focal_length: Optional[float] = None  # If available from DepthPro
-    processing_time_ms: Optional[float] = None
+    def __init__(self, depth_map: np.ndarray, depth_statistics: Optional[Dict[str, float]] = None, 
+                 model_name: Optional[str] = None, focal_length: Optional[float] = None, 
+                 processing_time_ms: Optional[float] = None):
+        super().__init__(depth_map=depth_map, depth_statistics=depth_statistics, model_name=model_name, 
+                        focal_length=focal_length, processing_time_ms=processing_time_ms)
     
     def _serialize_special_types(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle depth map serialization."""
@@ -34,7 +34,7 @@ class DepthResult(BaseResult):
         return ", ".join(fields)
     
     @classmethod 
-    def from_dict(cls, data: dict) -> "DepthResult":
+    def from_dict(cls, data: Dict[str, Any]) -> "DepthResult":
         """Reconstruct from dictionary."""
         deserialized_data = cls._deserialize_special_types(data)
         return cls(**deserialized_data)

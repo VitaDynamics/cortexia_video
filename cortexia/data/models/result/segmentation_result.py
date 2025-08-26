@@ -1,9 +1,8 @@
 """Segmentation data models"""
 
-from typing import Optional
+from typing import Optional, Dict, Any
 
 import numpy as np
-from pydantic import BaseModel, Field
 
 from .base_result import BaseResult
 from .detection_result import BoundingBox
@@ -13,12 +12,8 @@ from ..registry import schema_registry
 class SegmentationResult(BaseResult):
     """Result of image segmentation with area and label information"""
 
-    mask: np.ndarray
-    score: float
-    label: str
-    area: int
-    bbox: BoundingBox
-    detection_id: Optional[str] = None
+    def __init__(self, mask: np.ndarray, score: float, label: str, area: int, bbox: BoundingBox, detection_id: Optional[str] = None):
+        super().__init__(mask=mask, score=score, label=label, area=area, bbox=bbox, detection_id=detection_id)
 
     def _get_repr_fields(self) -> str:
         """Show key segmentation fields."""
@@ -31,7 +26,7 @@ class SegmentationResult(BaseResult):
         return ", ".join(fields)
 
     @classmethod
-    def from_dict(cls, data: dict) -> "SegmentationResult":
+    def from_dict(cls, data: Dict[str, Any]) -> "SegmentationResult":
         """Reconstruct from dictionary."""
         # Handle bbox conversion
         bbox_data = data["bbox"]

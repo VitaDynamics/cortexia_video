@@ -17,12 +17,11 @@ class GateResult(BaseResult):
     not decide pass/fail. Any thresholding/comparison policy is handled by
     downstream components (e.g., buffers/policies).
     """
-    gate_name: str  # Name of the gate/calculator
-    score: Optional[float] = None  # Scalar metric when applicable
-    vector: Optional[np.ndarray] = None  # Feature vector (e.g., CLIP embedding)
-    threshold: Optional[float] = None  # Optional: policy threshold recorded downstream
-    metadata: Optional[Dict[str, Any]] = None  # Additional gate-specific data
-    processing_time_ms: Optional[float] = None
+    def __init__(self, gate_name: str, score: Optional[float] = None, vector: Optional[np.ndarray] = None, 
+                 threshold: Optional[float] = None, metadata: Optional[Dict[str, Any]] = None, 
+                 processing_time_ms: Optional[float] = None):
+        super().__init__(gate_name=gate_name, score=score, vector=vector, threshold=threshold, 
+                        metadata=metadata, processing_time_ms=processing_time_ms)
 
     def _get_repr_fields(self) -> str:
         """Show key fields for repr."""
@@ -40,7 +39,7 @@ class GateResult(BaseResult):
         return ", ".join(fields)
 
     @classmethod
-    def from_dict(cls, data: dict) -> "GateResult":
+    def from_dict(cls, data: Dict[str, Any]) -> "GateResult":
         """Reconstruct from dictionary."""
         deserialized_data = cls._deserialize_special_types(data)
         return cls(**deserialized_data)

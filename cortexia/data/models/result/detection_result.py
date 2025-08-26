@@ -4,16 +4,16 @@ import uuid
 from typing import Any, Dict, Optional
 
 import numpy as np
-from pydantic import BaseModel, Field
 
 from .base_result import BaseResult
 from ..registry import schema_registry
 
-class BoundingBox(BaseModel):
-    xmin: float
-    ymin: float
-    xmax: float
-    ymax: float
+class BoundingBox:
+    def __init__(self, xmin: float, ymin: float, xmax: float, ymax: float):
+        self.xmin = xmin
+        self.ymin = ymin
+        self.xmax = xmax
+        self.ymax = ymax
 
     @property
     def xyxy(self) -> list[float]:
@@ -21,13 +21,10 @@ class BoundingBox(BaseModel):
 
 @schema_registry.register("result.detection")
 class DetectionResult(BaseResult):
-    score: float
-    label: str
-    box: BoundingBox
-    mask: Optional[np.ndarray] = None
-    description: Optional[str] = None
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    object_clip_features: Optional[np.ndarray] = None  # Changed to numpy array for consistency
+    def __init__(self, score: float, label: str, box: "BoundingBox", mask: Optional[np.ndarray] = None, 
+                 description: Optional[str] = None, id: str = None, object_clip_features: Optional[np.ndarray] = None):
+        super().__init__(score=score, label=label, box=box, mask=mask, description=description, 
+                        id=id or str(uuid.uuid4()), object_clip_features=object_clip_features)
 
     def _get_repr_fields(self) -> str:
         """Show key detection fields.""" 
@@ -39,10 +36,10 @@ class DetectionResult(BaseResult):
         return ", ".join(fields)
 
     @classmethod
-    def from_dict(cls, detection_dict: Dict) -> "DetectionResult":
+    def from_dict(cls, data: Dict[str, Any]) -> "DetectionResult":
         """Reconstruct DetectionResult from dictionary.""" 
         # Handle box conversion
-        box_data = detection_dict["box"]
+        box_data = data["box"]
         if isinstance(box_data, list):
             # Box as list format [xmin, ymin, xmax, ymax]
             box = BoundingBox(
@@ -56,15 +53,15 @@ class DetectionResult(BaseResult):
             box = BoundingBox(**box_data)
         
         # Use base class deserialization for numpy arrays
-        deserialized_data = cls._deserialize_special_types(detection_dict)
+        deserialized_data = cls._deserialize_special_types(data)
         
         # Override with specific conversions
         deserialized_data.update({
-            "score": detection_dict["score"],
-            "label": detection_dict["label"],
+            "score": data["score"],
+            "label": data["label"],
             "box": box,
-            "id": detection_dict.get("id", str(uuid.uuid4())),
-            "description": detection_dict.get("description"),
+            "id": data.get("id", str(uuid.uuid4())),
+            "description": data.get("description"),
         })
         
         return cls(**deserialized_data)

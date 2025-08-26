@@ -1,6 +1,6 @@
 """Tagging/listing result schema for object listing features."""
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from .base_result import BaseResult
 from ..registry import schema_registry
@@ -9,11 +9,10 @@ from ..registry import schema_registry
 class TaggingResult(BaseResult):
     """Result schema for object tagging/listing operations."""
     
-    tags: List[str]  # List of detected object tags
-    raw_response: Optional[str] = None  # Raw response from the model
-    confidence_scores: Optional[List[float]] = None  # Per-tag confidence if available  
-    model_name: Optional[str] = None
-    processing_time_ms: Optional[float] = None
+    def __init__(self, tags: List[str], raw_response: Optional[str] = None, confidence_scores: Optional[List[float]] = None, 
+                 model_name: Optional[str] = None, processing_time_ms: Optional[float] = None):
+        super().__init__(tags=tags, raw_response=raw_response, confidence_scores=confidence_scores, 
+                        model_name=model_name, processing_time_ms=processing_time_ms)
     
     def _get_repr_fields(self) -> str:
         """Show key fields for repr."""
@@ -28,7 +27,7 @@ class TaggingResult(BaseResult):
         return ", ".join(fields)
     
     @classmethod
-    def from_dict(cls, data: dict) -> "TaggingResult":
+    def from_dict(cls, data: Dict[str, Any]) -> "TaggingResult":
         """Reconstruct from dictionary.""" 
         deserialized_data = cls._deserialize_special_types(data)
         return cls(**deserialized_data)
