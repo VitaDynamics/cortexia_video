@@ -138,7 +138,7 @@ class BatchProcessor:
         """Return string representation of the processor."""
         return f"BatchProcessor(batch_size={self.batch_size}, indices_count={len(self.indices)})"
 
-
+# TODO: we need to remove this bathc processor
 def create_batch_processor(batch_size: int = 4) -> BatchProcessor:
     """Factory function to create a BatchProcessor instance.
     
