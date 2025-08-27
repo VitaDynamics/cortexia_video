@@ -5,9 +5,7 @@ from typing import Any, Dict, Optional
 import numpy as np
 
 from .base_result import BaseResult
-from ..registry import schema_registry
 
-@schema_registry.register("result.depth")
 class DepthResult(BaseResult):
     """Result schema for depth estimation operations."""
     

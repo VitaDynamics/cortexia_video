@@ -6,9 +6,7 @@ import numpy as np
 
 from .base_result import BaseResult
 from .detection_result import BoundingBox
-from ..registry import schema_registry
 
-@schema_registry.register("result.segmentation")
 class SegmentationResult(BaseResult):
     """Result of image segmentation with area and label information"""
 

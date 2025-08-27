@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 import numpy as np
 
 from .base_result import BaseResult
-from ..registry import schema_registry
+
 
 class BoundingBox:
     def __init__(self, xmin: float, ymin: float, xmax: float, ymax: float):
@@ -19,7 +19,7 @@ class BoundingBox:
     def xyxy(self) -> list[float]:
         return [self.xmin, self.ymin, self.xmax, self.ymax]
 
-@schema_registry.register("result.detection")
+
 class DetectionResult(BaseResult):
     def __init__(self, score: float, label: str, box: "BoundingBox", mask: Optional[np.ndarray] = None, 
                  description: Optional[str] = None, id: str = None, object_clip_features: Optional[np.ndarray] = None):

@@ -5,10 +5,8 @@ from typing import Any, Dict, Optional
 import numpy as np
 
 from .base_result import BaseResult
-from ..registry import schema_registry
 
 
-@schema_registry.register("result.gate")
 class GateResult(BaseResult):
     """
     Result schema for gate computations.

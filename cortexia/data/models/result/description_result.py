@@ -3,9 +3,7 @@
 from typing import List, Optional, Dict, Any
 
 from .base_result import BaseResult
-from ..registry import schema_registry
 
-@schema_registry.register("result.description")
 class DescriptionResult(BaseResult):
     """Result schema for object description operations."""
     

@@ -16,7 +16,6 @@ from .result.description_result import DescriptionResult
 from .result.feature_extraction_result import FeatureExtractionResult
 from .result.gate_result import GateResult
 from .result.tagging_result import TaggingResult
-from .registry import schema_registry
 
 
     
@@ -24,7 +23,6 @@ from .registry import schema_registry
 # TODO: we also need to support actions (future action seuquence in build on this frame. Or as a Windows)
 # TODO: How does action look like? Numpy array is a good start point. 
 
-@schema_registry.register("video.frame_packet")
 @dataclass
 class VideoFramePacket:
     """
@@ -47,8 +45,7 @@ class VideoFramePacket:
     # Core metadata
     additional_metadata: Dict[str, Any] = field(default_factory=dict)
     
-    # Extended fields for unified processing
-    # TODO: We need to support Action.  
+    # Extended fields for unified processing 
     annotations: Optional[Dict[str, Any]] = None  # Results from feature processing
 
     def __post_init__(self):
@@ -104,7 +101,6 @@ class VideoFramePacket:
             and self.source_video_id == other.source_video_id
             and self.additional_metadata == other.additional_metadata
             and self.annotations == other.annotations
-            and self.gate_results == other.gate_results
         )
 
         # Compare the numpy arrays
@@ -122,8 +118,17 @@ class VideoFramePacket:
             result_data: The annotation result object (one of the result schema classes)
         """
         
+        # Handle None result_data
+        if result_data is None:
+            return
+            
         result_type = result_data.__class__.__name__
-        self.annotations.result_type = result_data
+        
+        # Initialize annotations dict if None
+        if self.annotations is None:
+            self.annotations = {}
+        
+        self.annotations[result_type] = result_data
     
     def has_annotations(self) -> bool:
         """Check if frame has any annotation results."""
@@ -132,29 +137,38 @@ class VideoFramePacket:
     # TODO: this dict is not good
     def dict(self, **kwargs) -> Dict[str, Any]:
         """
-        Convert frame packet to dictionary for serialization with actual frame data.
+        Convert frame packet to dictionary for serialization.
         
-        This method handles serialization of complex types like numpy arrays
-        by converting them to bytes or appropriate serializable formats,
-        similar to BaseResult.dict() method.
+        This method handles basic type conversion for serialization,
+        keeping numpy arrays as-is for further processing.
         
         Args:
             **kwargs: Additional arguments for compatibility
             
         Returns:
-            Dictionary representation with serialized frame data
+            Dictionary representation with basic types
         """
-        data = {
+        return {
+            'frame_data': self.frame_data,
             'frame_number': self.frame_number,
             'timestamp': self.timestamp.total_seconds(),
             'source_video_id': self.source_video_id,
             'additional_metadata': self.additional_metadata.copy(),
             'annotations': self.annotations,
         }
+    
+    def serialize(self) -> Dict[str, Any]:
+        """
+        Serialize frame packet to dictionary with binary data for storage.
         
-        # Serialize numpy arrays using the same pattern as BaseResult
-        serialized_data = self._serialize_special_types(data)
-        return serialized_data
+        This method handles serialization of complex types like numpy arrays
+        by converting them to bytes for database or network storage.
+        
+        Returns:
+            Dictionary representation with serialized binary data
+        """
+        data = self.dict()
+        return self._serialize_special_types(data)
     
     def _serialize_special_types(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -168,15 +182,6 @@ class VideoFramePacket:
         """
         serialized = {}
         
-        # Handle frame_data separately since it's not in the data dict
-        if isinstance(self.frame_data, np.ndarray):
-            buffer = BytesIO()
-            np.save(buffer, self.frame_data)
-            serialized['frame_data_numpy_bytes'] = buffer.getvalue()
-            serialized['frame_data_numpy_shape'] = list(self.frame_data.shape)
-            serialized['frame_data_numpy_dtype'] = str(self.frame_data.dtype)
-        
-        # Handle other fields in the data dict
         for key, value in data.items():
             if isinstance(value, np.ndarray):
                 # Serialize numpy arrays to bytes
@@ -197,18 +202,30 @@ class VideoFramePacket:
         Reconstruct VideoFramePacket from dictionary.
         
         Args:
-            data: Dictionary with serialized frame data
+            data: Dictionary with frame data
+            
+        Returns:
+            Reconstructed VideoFramePacket instance
+        """
+        # Convert timestamp back to timedelta
+        if 'timestamp' in data:
+            data['timestamp'] = datetime.timedelta(seconds=data['timestamp'])
+        
+        return cls(**data)
+    
+    @classmethod
+    def deserialize(cls, data: Dict[str, Any]) -> 'VideoFramePacket':
+        """
+        Reconstruct VideoFramePacket from serialized dictionary.
+        
+        Args:
+            data: Dictionary with serialized binary data
             
         Returns:
             Reconstructed VideoFramePacket instance
         """
         deserialized_data = cls._deserialize_special_types(data)
-        
-        # Convert timestamp back to timedelta
-        if 'timestamp' in deserialized_data:
-            deserialized_data['timestamp'] = datetime.timedelta(seconds=deserialized_data['timestamp'])
-        
-        return cls(**deserialized_data)
+        return cls.from_dict(deserialized_data)
     
     @classmethod
     def _deserialize_special_types(cls, data: Dict[str, Any]) -> Dict[str, Any]:

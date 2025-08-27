@@ -3,11 +3,7 @@
 from typing import Optional, Dict, Any
 
 from .base_result import BaseResult
-from ..registry import schema_registry
 
-
-
-@schema_registry.register("result.caption")
 class CaptionResult(BaseResult):
     """Result schema for image captioning operations."""
     

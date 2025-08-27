@@ -3,9 +3,7 @@
 from typing import List, Optional, Dict, Any
 
 from .base_result import BaseResult
-from ..registry import schema_registry
 
-@schema_registry.register("result.tagging")
 class TaggingResult(BaseResult):
     """Result schema for object tagging/listing operations."""
     
@@ -13,6 +11,13 @@ class TaggingResult(BaseResult):
                  model_name: Optional[str] = None, processing_time_ms: Optional[float] = None):
         super().__init__(tags=tags, raw_response=raw_response, confidence_scores=confidence_scores, 
                         model_name=model_name, processing_time_ms=processing_time_ms)
+        
+        # Explicitly set attributes for type checking
+        self.tags = tags
+        self.raw_response = raw_response
+        self.confidence_scores = confidence_scores
+        self.model_name = model_name
+        self.processing_time_ms = processing_time_ms
     
     def _get_repr_fields(self) -> str:
         """Show key fields for repr."""

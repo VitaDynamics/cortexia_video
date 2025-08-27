@@ -5,10 +5,7 @@ from typing import Optional, Dict, Any
 import numpy as np
 
 from .base_result import BaseResult
-from ..registry import schema_registry
 
-
-@schema_registry.register("result.feature_extraction")
 class FeatureExtractionResult(BaseResult):
     """Result schema for feature extraction operations."""
     

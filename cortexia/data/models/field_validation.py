@@ -11,6 +11,7 @@ import numpy as np
 from ...api.exceptions import ProcessingError
 
 # TODO: how to easily link between this and other filed. 
+# TODO: this check class need to be type check supported. 
 class FrameField(Enum):
     """Enumeration of all possible fields in VideoFramePacket that features/gates might require."""
     

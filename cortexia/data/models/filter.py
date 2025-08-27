@@ -9,11 +9,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Sequence, TypeVar
-from .registry import schema_registry
 
 T = TypeVar("T")
 
-@schema_registry.register('filter.spec')
+
 class FilterSpec(ABC):
     """Composable predicate over a candidate and current window state."""
 

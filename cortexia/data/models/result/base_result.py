@@ -14,11 +14,11 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.types as pat
 
-from ..registry import schema_registry
+
 
 T = TypeVar('T', bound='BaseResult')
 
-@schema_registry.register("result.base")
+
 class BaseResult(ABC):
     """
     Base class for all feature and gate result schemas.
@@ -457,3 +457,83 @@ class BaseResult(ABC):
         """
         for key, value in kwargs.items():
             setattr(self, key, value)
+    
+    # It shoud useful for type infer in python. 
+    def __str__(self) -> str:
+        """
+        User-friendly string representation of the schema.
+        
+        Returns:
+            Formatted string showing schema structure and values
+        """
+        return self._format_schema()
+    
+    def __call__(self) -> str:
+        """
+        Call method that returns the formatted schema representation.
+        
+        Returns:
+            Formatted string showing schema structure and values
+        """
+        return self._format_schema()
+    
+    def _format_schema(self) -> str:
+        """
+        Format the schema in a user-friendly way.
+        
+        Returns:
+            Formatted string showing schema structure and values
+        """
+        lines = []
+        lines.append(f"Schema: {self.get_schema_name()}")
+        lines.append("=" * (len(self.get_schema_name()) + 8))
+        lines.append("")
+        
+        data = self.dict()
+        if not data:
+            lines.append("No fields")
+            return "\n".join(lines)
+        
+        for key, value in data.items():
+            if key.endswith('_numpy_bytes') or key.endswith('_numpy_shape') or key.endswith('_numpy_dtype'):
+                continue
+            
+            value_str = self._format_value(value)
+            lines.append(f"  {key}: {value_str}")
+        
+        return "\n".join(lines)
+    
+    def _format_value(self, value: Any) -> str:
+        """
+        Format a value for display.
+        
+        Args:
+            value: Value to format
+            
+        Returns:
+            Formatted string representation
+        """
+        if value is None:
+            return "None"
+        elif isinstance(value, (int, float, str, bool)):
+            return repr(value)
+        elif isinstance(value, np.ndarray):
+            return f"ndarray(shape={value.shape}, dtype={value.dtype})"
+        elif isinstance(value, list):
+            if len(value) == 0:
+                return "[]"
+            elif len(value) <= 3:
+                return f"[{', '.join(repr(x) for x in value)}]"
+            else:
+                return f"[{', '.join(repr(x) for x in value[:3])}, ...] (len={len(value)})"
+        elif isinstance(value, dict):
+            if len(value) == 0:
+                return "{}"
+            elif len(value) <= 3:
+                items = [f"{k}: {repr(v)}" for k, v in list(value.items())[:3]]
+                return f"{{{', '.join(items)}}}"
+            else:
+                items = [f"{k}: {repr(v)}" for k, v in list(value.items())[:3]]
+                return f"{{{', '.join(items)}, ...}} (len={len(value)})"
+        else:
+            return str(value)
