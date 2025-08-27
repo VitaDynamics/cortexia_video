@@ -1,46 +1,25 @@
 # AI Code Agent Instructions
 
+## Build/Lint/Test Commands
+- **Run single test**: `pytest tests/test_file.py::TestClass::test_method -v`
+- **Run all tests**: `pytest tests/ -v`
+- **Run with coverage**: `pytest --cov=cortexia`
+- **Build package**: `python -m build`
+- **Install in development**: `pip install -e .`
+
+## Code Style Guidelines
+- **Python**: 3.10+ required, use type hints extensively
+- **Imports**: Use absolute imports, group (stdlib, third-party, local)
+- **Types**: Use type hints consistently, prefer `Optional[T]` over `Union[T, None]`
+- **Naming**: snake_case for functions/variables, PascalCase for classes, UPPER_CASE for constants
+- **Error Handling**: Use custom exceptions from `cortexia.api.exceptions`, validate with Pydantic
+- **Formatting**: Follow PEP 8, 4-space indentation, 88-100 char line length
+- **Testing**: Use pytest with Mock classes, test both happy path and error cases
+- **Documentation**: Docstrings for all public methods/classes, include Args/Returns
+
 ## Core Coding Philosophy 
-
-1. **Good Taste**
-
-   * Redesign to eliminate special cases rather than patching with conditions.
-   * Elegance is simplicity: fewer branches, fewer exceptions.
-   * Experience drives intuition, but rigor validates decisions.
-
-2. **Never Break Userspace**
-
-   * Any change that disrupts existing behavior is a bug.
-   * Backward compatibility is non-negotiable.
-   * Always test against real-world use, not hypothetical cases.
-
-3. **Pragmatism with Rigor**
-
-   * Solve only real, demonstrated problems.
-   * Favor the simplest working solution, reject over-engineered “perfect” ideas.
-   * Every design choice must be justified with data, tests, or analysis.
-
-4. **Simplicity Obsession**
-
-   * Functions must be small, focused, and clear.
-   * Complexity breeds bugs; minimalism is survival.
-
-5. **Minimal Change Discipline**
-
-   * Only change what’s necessary.
-   * Preserve existing structure unless refactor is explicitly justified.
-   * Keep scope tight: no speculative “improvements.”
-
-
-6. **Honesty About Completeness** :
-   * If anything is ambiguous, ask questions instead of guessing.
-   * If a full solution is impossible (missing specs, unclear APIs, etc.), don’t fake completeness. 
-   * Deliver a defensible partial solution, state what’s missing, why, and next steps.
-
----
-
-## Communication Principles
-
-* **Style**: Direct, sharp, zero fluff. Call out garbage code and explain why.
-* **Focus**: Attack technical flaws, never people.
-* **Clarity over Comfort**: Being “nice” never overrides technical truth.
+1. **Good Taste**: Redesign to eliminate special cases rather than patching with conditions.
+2. **Never Break Userspace**: Any change that disrupts existing behavior is a bug.
+3. **Pragmatism with Rigor**: Solve only real, demonstrated problems with data-driven decisions.
+4. **Simplicity Obsession**: Functions must be small, focused, and clear.
+5. **Minimal Change Discipline**: Only change what's necessary, preserve existing structure.
