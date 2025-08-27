@@ -1,6 +1,6 @@
 """Object listing feature implementation"""
 
-from typing import List
+from typing import List, cast
 
 from PIL import Image
 
@@ -9,11 +9,14 @@ from ...api.exceptions import ModelLoadError, ProcessingError
 from ...data.models.video import VideoFramePacket
 from ...data.models.result.tagging_result import TaggingResult
 from ..registry import feature_registry
-from .models import MoonDreamLister
+from .models import Qwen2_5VLLister
 
 @feature_registry.register("listing")
 class ListingFeature(BaseFeature):
     """Object listing feature using various models"""
+    
+    # Define the output schema class attribute
+    output_schema = TaggingResult
     
     def __init__(self, config=None):
         super().__init__(config)
@@ -26,12 +29,23 @@ class ListingFeature(BaseFeature):
             model_name = self.get_config_param("model", "vikhyatk/moondream2")
 
             # Initialize ObjectLister with the same config dict
-            self.lister = MoonDreamLister(self.config)
+            self.lister = Qwen2_5VLLister(self.config)
             
             self.initialized = True
             
         except Exception as e:
             raise ModelLoadError(f"Failed to initialize listing model: {e}")
+
+    def _release(self) -> None:
+        """Release lister resources and free memory."""
+        try:
+            if self.lister is not None and hasattr(self.lister, "release"):
+                try:
+                    self.lister.release()
+                except Exception:
+                    pass
+        finally:
+            self.lister = None
     
     
     @property
@@ -76,7 +90,8 @@ class ListingFeature(BaseFeature):
         except Exception as e:
             raise ProcessingError(f"Error in listing processing: {e}")
     
-    def process_batch(self, frames: List[VideoFramePacket], **inputs) -> List[TaggingResult]:
+    # TOD
+    def process_batch(self, frames: List[VideoFramePacket], **inputs) -> List[TaggingResult]:  # type: ignore[override]
         """
         Process multiple frames for object listing.
         
@@ -133,6 +148,8 @@ class ListingFeature(BaseFeature):
         Returns:
             List of detected object names
         """
+        if self.lister is None:
+            return []
         return self.lister.list_objects_in_image(image)
     
     def _list_objects_batch(self, images: List[Image.Image]) -> List[List[str]]:
@@ -146,6 +163,8 @@ class ListingFeature(BaseFeature):
             List of object lists for each image
         """
         results = []
+        if self.lister is None:
+            return [[] for _ in images]
         for image in images:
             results.append(self.lister.list_objects_in_image(image))
         return results

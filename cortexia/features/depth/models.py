@@ -2,12 +2,13 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
+import gc
+import torch
+from PIL import Image
 from transformers import (
     DepthProImageProcessorFast,
     DepthProForDepthEstimation,
 )
-import torch
-from PIL import Image
 
 
 class BaseDepthEstimator(ABC):
@@ -35,6 +36,31 @@ class DepthProEstimator(BaseDepthEstimator):
         self.model = DepthProForDepthEstimation.from_pretrained(model_name)
         self.model.to(self.device)
         self.model.eval()
+
+    def release(self) -> None:
+        """Release model, processor, and free GPU/CPU memory."""
+        try:
+            if getattr(self, "model", None) is not None:
+                try:
+                    self.model.to("cpu")
+                except Exception:
+                    pass
+                del self.model
+                self.model = None
+            # Processor is CPU-side; drop reference
+            if getattr(self, "processor", None) is not None:
+                del self.processor
+                self.processor = None
+        finally:
+            try:
+                gc.collect()
+            except Exception:
+                pass
+            try:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
 
     def _load_image(
         self, image_path: Union[str, Path]

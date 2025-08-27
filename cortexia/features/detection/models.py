@@ -1,4 +1,5 @@
 from typing import List
+import gc
 import torch
 from PIL import Image
 from transformers.models.auto.modeling_auto import AutoModelForZeroShotObjectDetection
@@ -27,6 +28,30 @@ class ObjectDetector:
         
         # SAM model is not directly integrated in this class to avoid compatibility issues
         # Use the standalone ObjectSegmenter class for mask generation
+
+    def release(self) -> None:
+        """Release model and processor resources, free GPU memory if any."""
+        try:
+            if getattr(self, "model", None) is not None:
+                try:
+                    self.model.to("cpu")
+                except Exception:
+                    pass
+                del self.model
+                self.model = None
+            if getattr(self, "processor", None) is not None:
+                del self.processor
+                self.processor = None
+        finally:
+            try:
+                gc.collect()
+            except Exception:
+                pass
+            try:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
 
     def detect_objects(self, images_data: List[Image.Image], text_prompts: List[List[str]]) -> List[List[dict]]:
         """Detect objects in batched images based on text prompts.

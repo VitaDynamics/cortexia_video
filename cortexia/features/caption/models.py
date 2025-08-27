@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
+import gc
 import numpy as np
 from PIL import Image
 from transformers import AutoModelForCausalLM
+import torch
 
 
 class ImageCaptioner(ABC):
@@ -16,6 +18,10 @@ class ImageCaptioner(ABC):
     def caption_image(self, image_data: Any) -> str:
         """Return a caption describing the given image."""
         pass
+
+    def release(self) -> None:
+        """Release any resources held by the captioner (no-op by default)."""
+        return None
 
 class MoonDreamCaptioner(ImageCaptioner):
     """Captioner that uses the MoonDream2 VLM."""
@@ -47,3 +53,27 @@ class MoonDreamCaptioner(ImageCaptioner):
         except Exception as e:
             print(f"Error in image captioning: {e}")
             return ""
+
+    def release(self) -> None:
+        """Release model and free GPU/CPU memory where possible."""
+        try:
+            if getattr(self, "model", None) is not None:
+                try:
+                    # Move to CPU before delete to help free GPU VRAM
+                    self.model.to("cpu")
+                except Exception:
+                    pass
+                # Drop reference and collect
+                del self.model
+                self.model = None
+        finally:
+            # Trigger Python GC and clear CUDA cache if available
+            try:
+                gc.collect()
+            except Exception:
+                pass
+            try:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass

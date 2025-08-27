@@ -5,6 +5,7 @@ from PIL import Image
 import decord
 from abc import ABC, abstractmethod
 from typing import Any, List, Optional, Dict
+import gc
 import open_clip
 
 
@@ -62,6 +63,10 @@ class FeatureExtractor(ABC):
         """
         pass
 
+    def release(self) -> None:
+        """Release any resources held by the extractor (no-op by default)."""
+        return None
+
 
 class CLIPFeatureExtractor(FeatureExtractor):
     """
@@ -89,6 +94,34 @@ class CLIPFeatureExtractor(FeatureExtractor):
         self.model.to(self.device)
         self.model.eval()
         self.tokenizer = open_clip.get_tokenizer(model_name)
+
+    def release(self) -> None:
+        """Release CLIP model and free GPU/CPU memory."""
+        try:
+            if getattr(self, "model", None) is not None:
+                try:
+                    self.model.to("cpu")
+                except Exception:
+                    pass
+                del self.model
+                self.model = None
+            # Drop other heavy references
+            if getattr(self, "preprocess", None) is not None:
+                del self.preprocess
+                self.preprocess = None
+            if getattr(self, "tokenizer", None) is not None:
+                del self.tokenizer
+                self.tokenizer = None
+        finally:
+            try:
+                gc.collect()
+            except Exception:
+                pass
+            try:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
 
     def extract_image_features(self, images_data: List[Image.Image]) -> torch.Tensor:
         """
@@ -166,5 +199,4 @@ class CLIPFeatureExtractor(FeatureExtractor):
         if features1.shape[0] == 1:
             return similarity.cpu().numpy()[0]
         return similarity.cpu().numpy()
-
 

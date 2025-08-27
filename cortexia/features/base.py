@@ -18,7 +18,7 @@ class BaseFeature(ABC):
     """
     
     # Class attributes that subclasses should define
-    output_schema: Type[BaseResult] = None  # The result schema this feature produces
+    output_schema: Type[BaseResult]  # The result schema this feature produces
     required_inputs: List[str] = []  # List of required input schema names (e.g., ["TaggingResult"])
     required_fields: List[Union[str, FrameField]] = []  # List of required VideoFramePacket fields
     
@@ -91,6 +91,15 @@ class BaseFeature(ABC):
         - Set self.initialized = True on success
         """
         pass
+
+    def _release(self) -> None:
+        """
+        Release resources for this feature.
+
+        Subclasses may override to explicitly free large models, GPU memory,
+        file handles, and other resources. Default implementation is a no-op.
+        """
+        return None
     
     @abstractmethod
     def process_frame(self, frame: VideoFramePacket, **inputs) -> BaseResult:
@@ -152,6 +161,32 @@ class BaseFeature(ABC):
             Feature description
         """
         pass
+
+    def release(self) -> None:
+        """
+        Release any resources held by this feature and mark it uninitialized.
+
+        Subclasses should implement cleanup logic in `_release` and are expected
+        to set internal references (e.g., model objects) to None where helpful
+        for garbage collection. This method is idempotent.
+        """
+        try:
+            self._release()
+        finally:
+            # Ensure feature is marked not-ready after release
+            self.initialized = False
+
+    # Convenience alias commonly used for resource-bearing objects
+    close = release
+
+    # Optional context manager support for features
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.release()
+        # Do not suppress exceptions
+        return False
     
     def validate_config(self) -> bool:
         """

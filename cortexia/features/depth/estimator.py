@@ -34,6 +34,18 @@ class DepthFeature(BaseFeature):
             
         except Exception as e:
             raise ModelLoadError(f"Failed to initialize depth estimation model: {e}")
+
+    def _release(self) -> None:
+        """Release depth estimator resources and free memory."""
+        try:
+            if self.estimator is not None and hasattr(self.estimator, "release"):
+                try:
+                    self.estimator.release()
+                except Exception:
+                    pass
+        finally:
+            self.estimator = None
+            self.device = None
     
     @property
     def name(self) -> str:

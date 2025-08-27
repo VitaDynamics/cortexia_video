@@ -11,8 +11,9 @@ from ...data.models.result.base_result import BaseResult
 from ...data.models.result.detection_result import BoundingBox, DetectionResult
 from ...data.models.video import VideoFramePacket
 from .models import ObjectDetector
+from ..registry import feature_registry
 
-
+@feature_registry.register("detection")
 class DetectionFeature(BaseFeature):
     """Object detection feature using Grounding DINO"""
     
@@ -45,6 +46,18 @@ class DetectionFeature(BaseFeature):
             
         except Exception as e:
             raise ModelLoadError(f"Failed to initialize detection model: {e}")
+
+    def _release(self) -> None:
+        """Release detector resources and clear device refs."""
+        try:
+            if self.detector is not None and hasattr(self.detector, "release"):
+                try:
+                    self.detector.release()
+                except Exception:
+                    pass
+        finally:
+            self.detector = None
+            self.device = None
     
     @property
     def name(self) -> str:

@@ -30,6 +30,17 @@ class FeatureExtractionFeature(BaseFeature):
             self.initialized = True
         except Exception as e:
             raise ModelLoadError(f"Failed to initialize PE feature extraction engine: {e}")
+
+    def _release(self) -> None:
+        """Release feature extraction engine and free memory."""
+        try:
+            if self.engine is not None and hasattr(self.engine, "release"):
+                try:
+                    self.engine.release()
+                except Exception:
+                    pass
+        finally:
+            self.engine = None
     
     @property
     def name(self) -> str:

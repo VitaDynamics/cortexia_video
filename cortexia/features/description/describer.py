@@ -31,6 +31,17 @@ class DescriptionFeature(BaseFeature):
         except Exception as e:
             raise ModelLoadError(f"Failed to initialize description engine: {e}")
 
+    def _release(self) -> None:
+        """Release description engine and free memory."""
+        try:
+            if self.engine is not None and hasattr(self.engine, "release"):
+                try:
+                    self.engine.release()
+                except Exception:
+                    pass
+        finally:
+            self.engine = None
+
     @property
     def name(self) -> str:
         return "description"
@@ -113,4 +124,3 @@ class DescriptionFeature(BaseFeature):
         if x2 > x1 and y2 > y1:
             mask[y1:y2, x1:x2] = 1
         return mask
-

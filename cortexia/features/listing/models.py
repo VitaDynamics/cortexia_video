@@ -4,6 +4,7 @@ import os
 import sys
 from abc import ABC, abstractmethod
 from typing import Any, List, Union
+import gc
 
 import numpy as np
 import requests
@@ -66,6 +67,10 @@ class ObjectLister(ABC):
         """
         pass
 
+    def release(self) -> None:
+        """Release any resources held by the lister (no-op by default)."""
+        return None
+
     @abstractmethod
     def list_objects_in_image_batched(
         self, images_batch: List[Image.Image]
@@ -98,6 +103,26 @@ class MoonDreamLister(ObjectLister):
             device_map={"": "cuda"},
         )
 
+    def release(self) -> None:
+        try:
+            if getattr(self, "model", None) is not None:
+                try:
+                    self.model.to("cpu")
+                except Exception:
+                    pass
+                del self.model
+                self.model = None
+        finally:
+            try:
+                gc.collect()
+            except Exception:
+                pass
+            try:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
+
     def list_objects_in_image(self, image_data: Any) -> List[str]:
         """
         Extract a list of objects from an image using VQA.
@@ -128,6 +153,24 @@ class MoonDreamLister(ObjectLister):
             print(f"Error in object listing: {e}")
             return []
 
+    def list_objects_in_image_batched(
+        self, images_batch: List[Image.Image]
+    ) -> List[List[str]]:
+        """
+        Extract lists of objects from a batch of images.
+
+        Args:
+            images_batch: List of input images (PIL Images)
+
+        Returns:
+            List of lists of detected objects as strings, one list per image
+        """
+        results = []
+        for image in images_batch:
+            objects = self.list_objects_in_image(image)
+            results.append(objects)
+        return results
+
 
 class Qwen2_5VLLister(ObjectLister):
     def __init__(self, config: dict):
@@ -138,6 +181,29 @@ class Qwen2_5VLLister(ObjectLister):
             model_name, torch_dtype=torch.bfloat16, device_map="cuda:0"
         )
         self.processor = AutoProcessor.from_pretrained(model_name)
+
+    def release(self) -> None:
+        try:
+            if getattr(self, "model", None) is not None:
+                try:
+                    self.model.to("cpu")
+                except Exception:
+                    pass
+                del self.model
+                self.model = None
+            if getattr(self, "processor", None) is not None:
+                del self.processor
+                self.processor = None
+        finally:
+            try:
+                gc.collect()
+            except Exception:
+                pass
+            try:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
 
     def list_objects_in_image(self, image_data: Any) -> List[str]:
         if isinstance(image_data, np.ndarray):
@@ -294,6 +360,29 @@ class RAMLister(ObjectLister):
         )
 
         print(f"RAMLister initialized, will use weights at: {self.weights_path}")
+
+    def release(self) -> None:
+        try:
+            if getattr(self, "model", None) is not None:
+                try:
+                    self.model.to("cpu")
+                except Exception:
+                    pass
+                del self.model
+                self.model = None
+            if getattr(self, "transform", None) is not None:
+                del self.transform
+                self.transform = None
+        finally:
+            try:
+                gc.collect()
+            except Exception:
+                pass
+            try:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
 
     def _initialize_model(self):
         """Initialize the model and transform pipeline."""

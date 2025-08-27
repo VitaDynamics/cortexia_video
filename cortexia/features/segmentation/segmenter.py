@@ -1,6 +1,6 @@
 """Object segmentation feature implementation"""
 
-from typing import List
+from typing import List, Any
 
 import numpy as np
 import torch
@@ -18,7 +18,9 @@ from ..registry import feature_registry
 @feature_registry.register("segmentation")
 class SegmentationFeature(BaseFeature):
     """Object segmentation feature using SAM"""
-    
+
+    output_schema = SegmentationResult
+        
     def __init__(self, config=None):
         super().__init__(config)
         self.segmenter = None
@@ -42,6 +44,18 @@ class SegmentationFeature(BaseFeature):
             
         except Exception as e:
             raise ModelLoadError(f"Failed to initialize segmentation model: {e}")
+
+    def _release(self) -> None:
+        """Release segmenter resources and clear device refs."""
+        try:
+            if self.segmenter is not None and hasattr(self.segmenter, "release"):
+                try:
+                    self.segmenter.release()
+                except Exception:
+                    pass
+        finally:
+            self.segmenter = None
+            self.device = None
     
     @property
     def name(self) -> str:
@@ -78,19 +92,15 @@ class SegmentationFeature(BaseFeature):
             # Convert numpy array to PIL Image
             image = Image.fromarray(frame.frame_data)
             
-            # Extract bounding boxes from detections
-            boxes = []
-            detections = []
-            
-            # Check for detections in annotations
+            # Extract bounding boxes from detections (tolerant to annotation shape)
+            boxes: List[List[float]] = []
+            detections: List[DetectionResult] = []
             if hasattr(frame, 'annotations') and frame.annotations:
-                if hasattr(frame.annotations, 'detections') and frame.annotations.detections:
-                    detections = frame.annotations.detections
-                    for detection in detections:
-                        if detection.bbox:
-                            box = [detection.bbox.xmin, detection.bbox.ymin, 
-                                   detection.bbox.xmax, detection.bbox.ymax]
-                            boxes.append(box)
+                detections = self._extract_detections(frame.annotations)
+                for det in detections:
+                    if getattr(det, 'box', None):
+                        box = [det.box.xmin, det.box.ymin, det.box.xmax, det.box.ymax]
+                        boxes.append(box)
             
             # Run segmentation using ObjectSegmenter
             if boxes:
@@ -152,15 +162,13 @@ class SegmentationFeature(BaseFeature):
                 frame_boxes = []
                 frame_detections = []
                 
-                # Check for detections in annotations
+                # Check for detections in annotations (tolerant to annotation shape)
                 if hasattr(frame, 'annotations') and frame.annotations:
-                    if hasattr(frame.annotations, 'detections') and frame.annotations.detections:
-                        frame_detections = frame.annotations.detections
-                        for detection in frame_detections:
-                            if detection.bbox:
-                                box = [detection.bbox.xmin, detection.bbox.ymin, 
-                                       detection.bbox.xmax, detection.bbox.ymax]
-                                frame_boxes.append(box)
+                    frame_detections = self._extract_detections(frame.annotations)
+                    for det in frame_detections:
+                        if getattr(det, 'box', None):
+                            box = [det.box.xmin, det.box.ymin, det.box.xmax, det.box.ymax]
+                            frame_boxes.append(box)
                 
                 batch_boxes.append(frame_boxes)
                 batch_detections.append(frame_detections)
@@ -271,3 +279,27 @@ class SegmentationFeature(BaseFeature):
         for detection in detections:
             if detection.id in mask_map:
                 detection.mask = mask_map[detection.id]
+    # TODO: remove the list detections result usage. 
+    def _extract_detections(self, annotations: Any) -> List[DetectionResult]:
+        """
+        Extract detections from annotations in a backward-compatible way.
+        Supports:
+        - An object with attribute `detections`
+        - A dict with key 'detections' (list or single)
+        - A dict with key 'DetectionResult' (list or single)
+        """
+        # Case 1: object with .detections list
+        if hasattr(annotations, 'detections') and getattr(annotations, 'detections'):
+            vals = getattr(annotations, 'detections')
+            return list(vals) if isinstance(vals, list) else [vals]
+
+        # Case 2: dict-like structures
+        if isinstance(annotations, dict):
+            if 'detections' in annotations and annotations['detections']:
+                vals = annotations['detections']
+                return list(vals) if isinstance(vals, list) else [vals]
+            if 'DetectionResult' in annotations and annotations['DetectionResult']:
+                vals = annotations['DetectionResult']
+                return list(vals) if isinstance(vals, list) else [vals]
+
+        return []

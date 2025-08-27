@@ -50,6 +50,18 @@ class CaptionFeature(BaseFeature):
             
         except Exception as e:
             raise ModelLoadError(f"Failed to initialize captioning model: {e}")
+
+    def _release(self) -> None:
+        """Release captioner resources and free memory."""
+        try:
+            if self.captioner is not None:
+                try:
+                    self.captioner.release()
+                except Exception:
+                    pass
+        finally:
+            self.captioner = None
+            self.device = None
     
     @property
     def name(self) -> str:

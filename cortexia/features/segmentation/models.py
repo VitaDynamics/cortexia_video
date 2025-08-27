@@ -1,6 +1,7 @@
 import logging
 from typing import List, Optional
 
+import gc
 import numpy as np
 import torch
 from PIL import Image
@@ -61,6 +62,30 @@ class ObjectSegmenter:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.logger = logging.getLogger(__name__)
         self._load_model()
+
+    def release(self) -> None:
+        """Release SAM model and processor resources, free GPU memory."""
+        try:
+            if getattr(self, "model", None) is not None:
+                try:
+                    self.model.to("cpu")
+                except Exception:
+                    pass
+                del self.model
+                self.model = None
+            if getattr(self, "processor", None) is not None:
+                del self.processor
+                self.processor = None
+        finally:
+            try:
+                gc.collect()
+            except Exception:
+                pass
+            try:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
 
     def _load_model(self):
         """Load SAM model and processor from config"""
