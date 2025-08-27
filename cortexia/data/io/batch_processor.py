@@ -40,16 +40,19 @@ class BatchProcessor:
         self,
         load_func: Callable[[List[T]], List[Any]],
         inference_func: Callable[[List[Any], List[T]], List[Any]],
-        save_func: Callable[[T, Any], None],
+        save_func: Optional[Callable[[T, Any], None]] = None,
         filter_func: Optional[Callable[[T], bool]] = None,
-    ) -> None:
+    ) -> List[Any]:
         """Process items in batches using provided functions.
 
         Args:
             load_func: Function that takes indices and returns loaded objects
             inference_func: Function that takes (objects, indices) and returns inference results
-            save_func: Function that takes (index, result) and saves the result
+            save_func: Optional function that takes (index, result) and saves the result
             filter_func: Optional function to filter which indices to process
+            
+        Returns:
+            List of results if save_func is None, otherwise empty list
         """
         # Filter indices if filter function provided
         indices_to_process = self.indices.copy()
@@ -58,7 +61,10 @@ class BatchProcessor:
 
         if not indices_to_process:
             print("No indices to process after filtering")
-            return
+            return []
+
+        # Collect results if no save_func provided
+        collected_results = []
 
         # Process in batches
         total_batches = (len(indices_to_process) + self.batch_size - 1) // self.batch_size
@@ -92,12 +98,17 @@ class BatchProcessor:
 
                 print(f"Generated {len(results)} results")
 
-                # Save results for each object
-                for idx, result in zip(batch_indices, results):
-                    try:
-                        save_func(idx, result)
-                    except Exception as e:
-                        print(f"Failed to save result for {idx}: {e}")
+                # Handle results based on save_func
+                if save_func is not None:
+                    # Save results for each object
+                    for idx, result in zip(batch_indices, results):
+                        try:
+                            save_func(idx, result)
+                        except Exception as e:
+                            print(f"Failed to save result for {idx}: {e}")
+                else:
+                    # Collect results to return
+                    collected_results.extend(results)
 
             except Exception as e:
                 print(f"Error processing batch {batch_num}: {e}")
@@ -109,6 +120,8 @@ class BatchProcessor:
                 
                 # Force garbage collection after each batch
                 gc.collect()
+
+        return collected_results
 
     def _cleanup_objects(self, objects: Any) -> None:
         """Clean up objects by calling close() if available."""

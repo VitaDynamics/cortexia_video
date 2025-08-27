@@ -10,6 +10,7 @@ from .cortexia import (
     list_gates,
     create_feature,
     create_gate,
+    process_batch_with_processor,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "list_gates",
     "create_feature",
     "create_gate",
+    "process_batch_with_processor",
 ]

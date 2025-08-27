@@ -7,6 +7,12 @@ from the cortexia package through registries.
 from .cortexia_sdk import Cortexia
 from ..features import feature_registry
 from ..gates import gate_registry
+from ..data.io.batch_processor import BatchProcessor
+from typing import Any, Callable, List, Optional, Union
+from ..data.models.video import VideoFramePacket
+from ..data.models.result.base_result import BaseResult
+from ..features.base import BaseFeature
+from ..gates.base_gate import BaseGate
 
 __all__ = [
     "Cortexia",
@@ -18,6 +24,7 @@ __all__ = [
     "list_gates",
     "create_feature",
     "create_gate",
+    "process_batch_with_processor",
 ]
 
 
@@ -95,3 +102,43 @@ def create_gate(name: str, **kwargs):
     """
     gate_class = get_gate(name)
     return gate_class(**kwargs)
+
+
+def process_batch_with_processor(
+    indices: List[Any],
+    load_func: Callable[[List[Any]], List[VideoFramePacket]],
+    processor: Union[BaseFeature, BaseGate],
+    batch_size: int = 4,
+    filter_func: Optional[Callable[[Any], bool]] = None,
+) -> List[BaseResult]:
+    """
+    Process a batch of video frames using the BatchProcessor with a feature or gate.
+    
+    Args:
+        indices: List of indices (file paths, database IDs, etc.) to process
+        load_func: Function that takes indices and returns List[VideoFramePacket]
+        processor: BaseFeature or BaseGate instance to use for processing
+        batch_size: Number of items to process in each batch
+        filter_func: Optional function to filter which indices to process
+        
+    Returns:
+        List of BaseResult instances from processing
+    """
+    
+    def inference_func(frames: List[VideoFramePacket], batch_indices: List[Any]) -> List[BaseResult]:
+        """Inference function that uses the processor's process_batch method."""
+        return processor.process_batch(frames)
+    
+    # Create and configure batch processor
+    batch_processor = BatchProcessor(batch_size=batch_size)
+    batch_processor.load_indices(indices)
+    
+    # Process batches without save_func - results will be returned
+    results = batch_processor.process_batch(
+        load_func=load_func,
+        inference_func=inference_func,
+        save_func=None,  # None to collect results instead of saving
+        filter_func=filter_func
+    )
+    
+    return results

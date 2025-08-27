@@ -47,8 +47,8 @@ class Registry:
         """Decorator to register an item under a given (dotted) name.
 
         If ``name`` is None, the class/function name (lowercased) is used.
+        If the name is already registered, the existing (oldest) entry is kept.
         """
-
         def _decorator(obj: T) -> T:
             key = name or getattr(obj, "__name__", None)
             if not key:
@@ -56,11 +56,10 @@ class Registry:
             key = str(key)
             if name is None:
                 key = key.lower()
-            if key in self._items:
-                raise KeyError(f"{self._name}: '{key}' is already registered")
-            self._items[key] = obj
+            # Keep the oldest: only add if not present
+            if key not in self._items:
+                self._items[key] = obj
             return obj
-
         return _decorator
 
     def add(self, name: str, obj: Any, overwrite: bool = False) -> None:
