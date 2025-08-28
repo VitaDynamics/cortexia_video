@@ -66,13 +66,20 @@ class ObjectDetector:
             List[List[dict]]: List of detection lists for each image. Each detection is
             a dictionary with 'score', 'label', and 'box' keys.
         """
+
+        
         # Convert text_prompts to strings if needed (handling both formats)
+        # IMPORTANT: Grounding DINO requires lowercase prompts ending with a dot
         string_prompts = []
         for prompts in text_prompts:
             if isinstance(prompts, list):
-                string_prompts.append('. '.join(prompts) + '.')
+                # Lowercase each prompt and join with '. ' then add final '.'
+                lowercased_prompts = [p.lower() for p in prompts]
+                prompt_str = '. '.join(lowercased_prompts) + '.'
+                string_prompts.append(prompt_str)
             else:
-                string_prompts.append(prompts)
+                prompt_str = prompts.lower() if isinstance(prompts, str) else str(prompts).lower()
+                string_prompts.append(prompt_str)
                 
         # Process batch using the model's processor
         inputs = self.processor(
@@ -103,7 +110,6 @@ class ObjectDetector:
             target_sizes=target_sizes_tensor
         )
         
-        
         # Convert the model outputs to the required List[List[dict]] format
         results_final = []
         
@@ -114,7 +120,7 @@ class ObjectDetector:
             boxes = image_result["boxes"]
             scores = image_result["scores"]
             labels = image_result.get("text_labels", image_result.get("labels", []))  # Handle both API versions
-            
+
             # For each detection in this image
             for i in range(len(scores)):
                 box = boxes[i].tolist()  # [x1, y1, x2, y2]
@@ -130,5 +136,5 @@ class ObjectDetector:
                 detections_for_image.append(detection_dict)
             
             results_final.append(detections_for_image)
-        
+
         return results_final

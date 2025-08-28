@@ -7,10 +7,11 @@ import torch
 from PIL import Image
 
 from ..base import BaseFeature
+from ...data.models.result.base_result import BaseResult
 from ...api.exceptions import ModelLoadError, ProcessingError
-from ...data.models.result.detection_result import BoundingBox, DetectionResult
+from ...data.models.result.detection_result import BoundingBox, DetectionResult, SingleDetection
 from ...data.models.video import VideoFramePacket
-from ...data.models.result.segmentation_result import SegmentationResult
+from ...data.models.result.segmentation_result import SegmentationResult, SingleSegmentation
 from .models import ObjectSegmenter
 
 from ..registry import feature_registry
@@ -80,13 +81,7 @@ class SegmentationFeature(BaseFeature):
             self._initialize()
         
         if frame.frame_data is None:
-            return SegmentationResult(
-                mask=np.array([]),
-                score=0.0,
-                label="",
-                area=0,
-                bbox=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)
-            )
+            return SegmentationResult(segmentations=[])
         
         try:
             # Convert numpy array to PIL Image
@@ -94,10 +89,13 @@ class SegmentationFeature(BaseFeature):
             
             # Extract bounding boxes from detections (tolerant to annotation shape)
             boxes: List[List[float]] = []
-            detections: List[DetectionResult] = []
+            single_detections: List[SingleDetection] = []
             if hasattr(frame, 'annotations') and frame.annotations:
-                detections = self._extract_detections(frame.annotations)
-                for det in detections:
+                detection_results = self._extract_detections(frame.annotations)
+                # Flatten all SingleDetection objects from DetectionResult objects
+                for detection_result in detection_results:
+                    single_detections.extend(detection_result.detections)
+                for det in single_detections:
                     if getattr(det, 'box', None):
                         box = [det.box.xmin, det.box.ymin, det.box.xmax, det.box.ymax]
                         boxes.append(box)
@@ -107,25 +105,18 @@ class SegmentationFeature(BaseFeature):
                 masks = self.segmenter.segment_object(image, boxes)
                 
                 # Create segmentation results
-                segments = self._create_segmentation_results(masks, boxes, detections)
+                segments = self._create_segmentation_results(masks, boxes, single_detections)
                 
-                # Return first segment or empty result
-                if segments:
-                    return segments[0]
+                # Return all segments
+                return SegmentationResult(segmentations=segments)
             
             # Return empty result if no segments
-            return SegmentationResult(
-                mask=np.array([]),
-                score=0.0,
-                label="",
-                area=0,
-                bbox=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)
-            )
+            return SegmentationResult(segmentations=[])
             
         except Exception as e:
             raise ProcessingError(f"Error in segmentation processing: {e}")
     
-    def process_batch(self, frames: List[VideoFramePacket], **inputs) -> List[SegmentationResult]:
+    def process_batch(self, frames: List[VideoFramePacket], **inputs) -> List[BaseResult]:
         """
         Process multiple frames for object segmentation.
         
@@ -143,13 +134,7 @@ class SegmentationFeature(BaseFeature):
         valid_frames = [f for f in frames if f.frame_data is not None]
         
         if not valid_frames:
-            return [SegmentationResult(
-                mask=np.array([]),
-                score=0.0,
-                label="",
-                area=0,
-                bbox=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)
-            ) for _ in frames]
+            return [SegmentationResult(segmentations=[]) for _ in frames]
         
         try:
             # Convert to PIL Images
@@ -157,21 +142,24 @@ class SegmentationFeature(BaseFeature):
             
             # Extract bounding boxes from detections for each frame
             batch_boxes = []
-            batch_detections = []
+            batch_single_detections = []
             for frame in valid_frames:
                 frame_boxes = []
-                frame_detections = []
+                frame_single_detections = []
                 
                 # Check for detections in annotations (tolerant to annotation shape)
                 if hasattr(frame, 'annotations') and frame.annotations:
-                    frame_detections = self._extract_detections(frame.annotations)
-                    for det in frame_detections:
+                    detection_results = self._extract_detections(frame.annotations)
+                    # Flatten all SingleDetection objects from DetectionResult objects
+                    for detection_result in detection_results:
+                        frame_single_detections.extend(detection_result.detections)
+                    for det in frame_single_detections:
                         if getattr(det, 'box', None):
                             box = [det.box.xmin, det.box.ymin, det.box.xmax, det.box.ymax]
                             frame_boxes.append(box)
                 
                 batch_boxes.append(frame_boxes)
-                batch_detections.append(frame_detections)
+                batch_single_detections.append(frame_single_detections)
             
             # Run batch segmentation
             batch_masks = self.segmenter.segment_object(images, batch_boxes)
@@ -183,34 +171,13 @@ class SegmentationFeature(BaseFeature):
                 if frame.frame_data is not None and valid_idx < len(batch_masks):
                     masks = batch_masks[valid_idx]
                     if batch_boxes[valid_idx]:
-                        segments = self._create_segmentation_results(masks, batch_boxes[valid_idx], batch_detections[valid_idx])
-                        if segments:
-                            results.append(segments[0])
-                        else:
-                            results.append(SegmentationResult(
-                                mask=np.array([]),
-                                score=0.0,
-                                label="",
-                                area=0,
-                                bbox=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)
-                            ))
+                        segments = self._create_segmentation_results(masks, batch_boxes[valid_idx], batch_single_detections[valid_idx])
+                        results.append(SegmentationResult(segmentations=segments))
                     else:
-                        results.append(SegmentationResult(
-                            mask=np.array([]),
-                            score=0.0,
-                            label="",
-                            area=0,
-                            bbox=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)
-                        ))
+                        results.append(SegmentationResult(segmentations=[]))
                     valid_idx += 1
                 else:
-                    results.append(SegmentationResult(
-                        mask=np.array([]),
-                        score=0.0,
-                        label="",
-                        area=0,
-                        bbox=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)
-                    ))
+                    results.append(SegmentationResult(segmentations=[]))
             
             return results
             
@@ -218,67 +185,53 @@ class SegmentationFeature(BaseFeature):
             raise ProcessingError(f"Error in batch segmentation processing: {e}")
     
     def _create_segmentation_results(self, masks: List[np.ndarray], boxes: List[List[float]], 
-                                    detections: List[DetectionResult]) -> List[SegmentationResult]:
+                                    detections: List[SingleDetection]) -> List[SingleSegmentation]:
         """
-        Create SegmentationResult objects from masks.
+        Create SingleSegmentation objects from masks.
         
         Args:
             masks: List of binary masks
             boxes: List of bounding boxes used for segmentation
-            detections: List of detection results for matching
+            detections: List of single detection results for matching
             
         Returns:
-            List of SegmentationResult objects
+            List of SingleSegmentation objects
         """
         segments = []
         
         for i, mask in enumerate(masks):
             if i < len(boxes):
-                bbox = boxes[i]
-                
                 # Calculate mask area
                 area = int(np.sum(mask))
                 
-                # Convert bbox format to BoundingBox object
-                bbox_obj = BoundingBox(xmin=bbox[0], ymin=bbox[1], xmax=bbox[2], ymax=bbox[3])
-                
-                # Match with detection if possible
-                detection_id = None
+                # Get label from detection if available
+                label = f"segment_{i}"  # Generic label
                 if i < len(detections):
-                    detection_id = detections[i].id
+                    label = detections[i].label
                 
-                # Create segmentation result
-                segment = SegmentationResult(
+                # Create single segmentation result
+                segment = SingleSegmentation(
                     mask=mask,
-                    score=1.0,  # Default score
-                    label=f"segment_{i}",  # Generic label
-                    area=area,
-                    bbox=bbox_obj,
-                    detection_id=detection_id
+                    label=label,
+                    area=area
                 )
                 
                 segments.append(segment)
         
         return segments
     
-    def _add_masks_to_detections(self, segments: List[SegmentationResult], detections: List[DetectionResult]):
+    def _add_masks_to_detections(self, segments: List[SingleSegmentation], detections: List[SingleDetection]):
         """
         Add masks to detection objects for backward compatibility.
         
         Args:
-            segments: List of segmentation results
-            detections: List of detection results
+            segments: List of single segmentation results
+            detections: List of single detection results
         """
-        # Create mapping from detection_id to mask
-        mask_map = {}
-        for segment in segments:
-            if segment.detection_id:
-                mask_map[segment.detection_id] = segment.mask
-        
-        # Add masks to detections
-        for detection in detections:
-            if detection.id in mask_map:
-                detection.mask = mask_map[detection.id]
+        # Note: This method is kept for backward compatibility but may need adjustment
+        # since SingleDetection doesn't have an id attribute and SingleSegmentation
+        # doesn't have a detection_id attribute in the new design
+        pass
     # TODO: remove the list detections result usage. 
     def _extract_detections(self, annotations: Any) -> List[DetectionResult]:
         """

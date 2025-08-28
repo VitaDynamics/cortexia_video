@@ -1,5 +1,6 @@
 """Object detection feature implementation"""
 
+import ast
 from typing import List
 
 import torch
@@ -8,7 +9,7 @@ from PIL import Image
 from ..base import BaseFeature
 from ...api.exceptions import ModelLoadError, ProcessingError
 from ...data.models.result.base_result import BaseResult
-from ...data.models.result.detection_result import BoundingBox, DetectionResult
+from ...data.models.result.detection_result import BoundingBox, SingleDetection, DetectionResult
 from ...data.models.video import VideoFramePacket
 from .models import ObjectDetector
 from ..registry import feature_registry
@@ -82,7 +83,8 @@ class DetectionFeature(BaseFeature):
             self._initialize()
         
         if frame.frame_data is None or frame.frame_data.size == 0:
-            return DetectionResult(score=0.0, label="", box=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0))
+            print("Frame Data is None")
+            return DetectionResult(detections=[])
         
         try:
             # Convert numpy array to PIL Image
@@ -97,11 +99,8 @@ class DetectionFeature(BaseFeature):
             # Convert to DetectionResult objects
             detections = self._convert_to_detection_results(detection_results[0])
             
-            # Return first detection or empty result
-            if detections:
-                return detections[0]
-            else:
-                return DetectionResult(score=0.0, label="", box=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0))
+            # Return all detections in a DetectionResult
+            return DetectionResult(detections=detections, model_name=self.get_config_param("model", "IDEA-Research/grounding-dino-base"))
             
         except Exception as e:
             raise ProcessingError(f"Error in detection processing: {e}")
@@ -124,7 +123,7 @@ class DetectionFeature(BaseFeature):
         valid_packets = [f for f in frames if f.frame_data is not None and f.frame_data.size > 0]
         
         if not valid_packets:
-            return [DetectionResult(score=0.0, label="", box=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)) for _ in frames]
+            return [DetectionResult(detections=[]) for _ in frames]
         
         try:
             # Convert to PIL Images
@@ -143,15 +142,12 @@ class DetectionFeature(BaseFeature):
                 if packet.frame_data is not None and packet.frame_data.size > 0:
                     if valid_idx < len(batch_detection_results):
                         detections = self._convert_to_detection_results(batch_detection_results[valid_idx])
-                        if detections:
-                            results.append(detections[0])
-                        else:
-                            results.append(DetectionResult(score=0.0, label="", box=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)))
+                        results.append(DetectionResult(detections=detections, model_name=self.get_config_param("model", "IDEA-Research/grounding-dino-base")))
                         valid_idx += 1
                     else:
-                        results.append(DetectionResult(score=0.0, label="", box=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)))
+                        results.append(DetectionResult(detections=[]))
                 else:
-                    results.append(DetectionResult(score=0.0, label="", box=BoundingBox(xmin=0, ymin=0, xmax=0, ymax=0)))
+                    results.append(DetectionResult(detections=[]))
             
             return results
             
@@ -173,24 +169,46 @@ class DetectionFeature(BaseFeature):
         
         # Use lister results if available
         if 'lister_results' in metadata and metadata['lister_results']:
-            return metadata['lister_results']
+            prompts = metadata['lister_results']      
+            # Handle case where prompts is a string representation of a list
+            if isinstance(prompts, str):
+                try:
+                    import ast
+                    prompts = ast.literal_eval(prompts)
+                except:
+                    # If that fails, try to split by common delimiters
+                    prompts = [p.strip().strip("'\"") for p in prompts.split(',') if p.strip()]
+            elif isinstance(prompts, list) and prompts and isinstance(prompts[0], str) and len(prompts) > 10:
+                # This looks like individual characters - try to reconstruct
+                # This happens when list("string") is called
+                try:
+                    joined = ''.join(prompts)
+                    if joined.startswith("['") and joined.endswith("']"):
+                        # Try to parse as Python list literal
+                        prompts = ast.literal_eval(joined)
+                except:
+                    pass
+            
+            return prompts
         
         # Use dino prompt if available
         if 'dino_prompt' in metadata and metadata['dino_prompt']:
-            return metadata['dino_prompt'].split(".")
+            prompts = metadata['dino_prompt'].split(".")
+            return prompts
         
         # Default prompts
-        return self.get_config_param("default_prompts", ["object"])
+        default_prompts = self.get_config_param("default_prompts", ["object"])
+        return default_prompts
     
-    def _convert_to_detection_results(self, detection_results: List[dict]) -> List[DetectionResult]:
+    def _convert_to_detection_results(self, detection_results: List[dict]) -> List[SingleDetection]:
         """
-        Convert ObjectDetector output to DetectionResult objects.
+        Convert ObjectDetector output to SingleDetection objects.
         
         Args:
             detection_results: List of detection dictionaries from ObjectDetector
             
         Returns:
-            List of DetectionResult objects
+            List of SingleDetection objects
         """
         detections = []
         
@@ -199,7 +217,7 @@ class DetectionFeature(BaseFeature):
             score = detection_dict["score"]
             label = detection_dict["label"]
             
-            detection = DetectionResult(
+            detection = SingleDetection(
                 score=score,
                 label=label,
                 box=BoundingBox(xmin=box[0], ymin=box[1], xmax=box[2], ymax=box[3])
