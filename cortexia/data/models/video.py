@@ -1,9 +1,11 @@
 """Video data models"""
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, List
 import datetime
+from .result.tagging_result import TaggingResult
 from io import BytesIO
+import math
 
 import numpy as np
 from pydantic import BaseModel, Field
@@ -15,13 +17,69 @@ from .result.depth_result import DepthResult
 from .result.description_result import DescriptionResult
 from .result.feature_extraction_result import FeatureExtractionResult
 from .result.gate_result import GateResult
-from .result.tagging_result import TaggingResult
+from .result.trajectory_result import TrajectoryResult
+
 
 
     
 # TODO: should support all optional of result in result folder. 
 # TODO: we also need to support actions (future action seuquence in build on this frame. Or as a Windows)
 # TODO: How does action look like? Numpy array is a good start point. 
+
+
+@dataclass
+class TrajectoryPoint:
+    """
+    Represents a single point in the trajectory with state information.
+    
+    This class stores position, orientation, and state classification for
+    a single trajectory point, supporting both 2D and 3D trajectory analysis.
+    """
+    
+    x: float
+    y: float
+    z: float = 0.0  # Optional z-coordinate for 3D support
+    qx: float = 0.0  # Quaternion x component
+    qy: float = 0.0  # Quaternion y component
+    qz: float = 0.0  # Quaternion z component
+    qw: float = 1.0  # Quaternion w component
+    yaw: Optional[float] = None  # Calculated yaw angle from quaternion
+    state: Optional[str] = None  # Classification state
+    future_yaw_diff: Optional[float] = None  # Orientation difference with future point
+    velocity: Optional[float] = None  # Velocity magnitude
+    
+    def __post_init__(self):
+        """Calculate yaw angle from quaternion if not provided."""
+        if self.yaw is None:
+            self.calculate_yaw()
+
+    def calculate_yaw(self):
+        """Calculate yaw angle from quaternion."""
+        # Convert quaternion to yaw angle (rotation around z-axis)
+        # yaw = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy^2 + qz^2))
+        self.yaw = math.atan2(2 * (self.qw * self.qz + self.qx * self.qy), 
+                                1 - 2 * (self.qy**2 + self.qz**2))
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary representation."""
+        return {
+            'x': self.x,
+            'y': self.y,
+            'z': self.z,
+            'qx': self.qx,
+            'qy': self.qy,
+            'qz': self.qz,
+            'qw': self.qw,
+            'yaw': self.yaw,
+            'state': self.state,
+            'future_yaw_diff': self.future_yaw_diff,
+            'velocity': self.velocity
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'TrajectoryPoint':
+        """Reconstruct TrajectoryPoint from dictionary."""
+        return cls(**data)
 
 @dataclass
 class VideoFramePacket:
@@ -41,6 +99,9 @@ class VideoFramePacket:
     )
     timestamp: datetime.timedelta  # Timestamp of the frame relative to the video start
     source_video_id: str  # A unique identifier for the source video file or stream
+    # Action Related 
+    trajecotry: List[TrajectoryPoint]
+    current_traj_index: int # Indicate the current frame's position in the trajectory list.
 
     # Core metadata
     additional_metadata: Dict[str, Any] = field(default_factory=dict)
@@ -110,7 +171,7 @@ class VideoFramePacket:
     
     # Convenience methods for unified data flow
     
-    def add_annotation_result(self, result_data: Union[CaptionResult, DetectionResult, SegmentationResult, DepthResult, DescriptionResult, FeatureExtractionResult, TaggingResult, GateResult]) -> None:
+    def add_annotation_result(self, result_data: Union[CaptionResult, DetectionResult, SegmentationResult, DepthResult, DescriptionResult, FeatureExtractionResult, TaggingResult, GateResult, TrajectoryResult]) -> None:
         """
         Add annotation result to frame using schema classes.
         

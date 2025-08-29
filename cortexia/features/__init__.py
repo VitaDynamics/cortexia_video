@@ -18,6 +18,7 @@ from .detection.detector import DetectionFeature
 from .listing.lister import ListingFeature
 from .segmentation.segmenter import SegmentationFeature
 from .feature_extraction.extractor import FeatureExtractionFeature
+from .trajectory.analyzer import TrajectoryFeature
 
 # Make key classes available at package level
 __all__ = [
@@ -28,5 +29,6 @@ __all__ = [
     "DetectionFeature",
     "ListingFeature",
     "SegmentationFeature", 
-    "FeatureExtractionFeature"
+    "FeatureExtractionFeature",
+    "TrajectoryFeature"
 ]
