@@ -255,11 +255,25 @@ class TestBaseFeature:
         frame_data = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
         timestamp = datetime.timedelta(seconds=frame_number / 30.0)
         
+        # Create minimal trajectory data
+        from cortexia.data.models.video import TrajectoryPoint
+        trajectory_point = TrajectoryPoint(
+            x=frame_number * 0.1,
+            y=frame_number * 0.1,
+            z=0.0,
+            qx=0.0,
+            qy=0.0,
+            qz=0.0,
+            qw=1.0
+        )
+        
         return VideoFramePacket(
             frame_data=frame_data,
             frame_number=frame_number,
             timestamp=timestamp,
-            source_video_id="test_video"
+            source_video_id="test_video",
+            trajecotry=[trajectory_point],
+            current_traj_index=0
         )
 
 
@@ -312,9 +326,23 @@ class TestBaseFeatureIntegration:
         frame_data = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
         timestamp = datetime.timedelta(seconds=frame_number / 30.0)
         
+        # Create minimal trajectory data
+        from cortexia.data.models.video import TrajectoryPoint
+        trajectory_point = TrajectoryPoint(
+            x=frame_number * 0.1,
+            y=frame_number * 0.1,
+            z=0.0,
+            qx=0.0,
+            qy=0.0,
+            qz=0.0,
+            qw=1.0
+        )
+        
         return VideoFramePacket(
             frame_data=frame_data,
             frame_number=frame_number,
             timestamp=timestamp,
-            source_video_id="test_video"
+            source_video_id="test_video",
+            trajecotry=[trajectory_point],
+            current_traj_index=0
         )
