@@ -31,6 +31,7 @@ import os
 import sys
 import io
 import json
+import math
 import datetime
 from dataclasses import dataclass
 from pathlib import Path
@@ -120,7 +121,7 @@ def decode_image_from_bytes(b: bytes) -> np.ndarray:
         return np.array(im)
 
 
-def build_video_frame_packet(row: pa.Table, row_idx: int) -> VideoFramePacket:
+def build_video_frame_packet(row: pa.Table, row_idx: int, full_table: Optional[pa.Table] = None) -> VideoFramePacket:
     """Construct a VideoFramePacket from a 1-row Arrow table slice."""
     # Image
     img_val = row[IMAGE_COL][0]
@@ -153,12 +154,46 @@ def build_video_frame_packet(row: pa.Table, row_idx: int) -> VideoFramePacket:
     else:
         ts = datetime.timedelta(seconds=frame_no / 30.0)
 
+    # Build trajectory data using current + next 6 frames (7 points total)
+    trajectory_points = []
+    if full_table is not None:
+        # Import trajectory models
+        from cortexia.data.models.video import TrajectoryPoint
+        
+        # Collect trajectory points for current frame and next 6 frames
+        for j in range(7):  # 0 to 6
+            frame_idx = row_idx + j
+            if frame_idx >= len(full_table):
+                # Not enough future frames, break early
+                break
+                
+            # Get odo data for this frame
+            if 'odo' in full_table.column_names:
+                odo_data = full_table['odo'][frame_idx]
+                if hasattr(odo_data, 'as_py'):
+                    odo_data = odo_data.as_py()
+                
+                # odo_data should contain 7 numbers: x, y, z, qx, qy, qz, qw
+                if isinstance(odo_data, (list, tuple)) and len(odo_data) >= 7:
+                    x, y, z, qx, qy, qz, qw = odo_data[:7]
+                    traj_point = TrajectoryPoint(x=x, y=y, z=z, qx=qx, qy=qy, qz=qz, qw=qw)
+                else:
+                    # Create default trajectory point if invalid odo data
+                    traj_point = TrajectoryPoint(x=frame_idx*0.1, y=0.0, z=0.0, qx=0.0, qy=0.0, qz=0.0, qw=1.0)
+            else:
+                # No odo column, create simulated trajectory data
+                traj_point = TrajectoryPoint(x=frame_idx*0.1, y=0.0, z=0.0, qx=0.0, qy=0.0, qz=0.0, qw=1.0)
+            
+            trajectory_points.append(traj_point)
+
     return VideoFramePacket(
         frame_data=frame_np,
         frame_number=frame_no,
         timestamp=ts,
         source_video_id=vid,
         additional_metadata={},
+        trajecotry=trajectory_points,  # Note: field name has typo
+        current_traj_index=0  # Current frame is always at index 0
     )
 
 
@@ -170,7 +205,7 @@ def make_loader(table: pa.Table):
         frames: List[VideoFramePacket] = []
         for pos, row_idx in enumerate(indices):
             one = sub.slice(pos, 1)
-            frames.append(build_video_frame_packet(one, row_idx))
+            frames.append(build_video_frame_packet(one, row_idx, full_table=table))
         return frames
 
     return load_func
@@ -234,6 +269,7 @@ caption = cortexia.create_feature("caption")
 listing = cortexia.create_feature("listing")
 detection = cortexia.create_feature("detection")
 segmentation = cortexia.create_feature("segmentation")
+trajectory = cortexia.create_feature("trajectory")
 
 # Materialize frames once for chaining and attachment
 frames = load_func(indices)
@@ -315,6 +351,44 @@ seg_results = segmentation.process_batch(frames)
 print(seg_results[0].segmentations[0])
 
 # %% [markdown]
+# **5) Trajectory Analysis - Annotate Action States**
+# 
+# Now let's use the trajectory feature to analyze movement states.
+# The trajectory data is already loaded into VideoFramePacket from the 'odo' column 
+# during frame creation, containing 7 numbers: x, y, z, qx, qy, qz, qw representing 
+# position and orientation for current + next 6 frames (7 points total).
+
+# %%
+print("Running Trajectory Analysis to annotate action states...")
+
+# Process trajectory analysis (trajectory data is already in frames)
+traj_results = trajectory.process_batch(frames)
+
+# Attach trajectory results to frames
+for frame, traj_result in zip(frames, traj_results):
+    frame.add_annotation_result(traj_result)
+
+# %%
+# Examine trajectory analysis results
+print("Trajectory Analysis Results:")
+for i in range(min(3, len(frames))):
+    traj_result = traj_results[i]
+    current_state = traj_result.get_current_state()
+    state_dist = traj_result.state_distribution
+    
+    print(f"Frame {i}:")
+    print(f"  Current state: {current_state}")
+    print(f"  State distribution: {state_dist}")
+    
+    # Get current trajectory point details
+    if 0 <= traj_result.current_index < len(traj_result.trajectory_points):
+        point = traj_result.trajectory_points[traj_result.current_index]
+        print(f"  Position: ({point.x:.2f}, {point.y:.2f}, {point.z:.2f})")
+        print(f"  Orientation: yaw={math.degrees(point.yaw):.1f}°")
+        print(f"  Velocity: {point.velocity:.3f}")
+    print()
+
+# %% [markdown]
 # **Lets check some examples** 
 
 # %%
@@ -348,12 +422,14 @@ col_caption_struct = results_to_struct_array(cap_results)
 col_tags_struct = results_to_struct_array(list_results)
 col_det_struct = results_to_struct_array(det_results)
 col_seg_struct = results_to_struct_array(seg_results)
+col_traj_struct = results_to_struct_array(traj_results)
 
 annotated = table
 annotated = annotated.append_column("cortexia_caption", col_caption_struct)
 annotated = annotated.append_column("cortexia_tags", col_tags_struct)
 annotated = annotated.append_column("cortexia_detection", col_det_struct)
 annotated = annotated.append_column("cortexia_segmentation", col_seg_struct)
+annotated = annotated.append_column("cortexia_trajectory", col_traj_struct)
 
 # %%
 try:
@@ -383,6 +459,7 @@ def preview_rows(tbl: pa.Table, k: int = 3):
             "cortexia_tags",
             "cortexia_detection",
             "cortexia_segmentation",
+            "cortexia_trajectory",
         ] if c and c in tbl.column_names
     ]
     for i in range(min(k, len(tbl))):
