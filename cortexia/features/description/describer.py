@@ -56,15 +56,14 @@ class DescriptionFeature(BaseFeature):
             self._initialize()
 
         if frame.frame_data is None:
-            return frame
+            return DescriptionResult(descriptions=[])
 
         try:
             image = Image.fromarray(frame.frame_data)
-            descriptions = self._describe_objects(image, frame.annotations.detections if frame.annotations else [])
-            for i, detection in enumerate(frame.annotations.detections if frame.annotations else []):
-                if i < len(descriptions):
-                    detection.description = descriptions[i]
-            return frame
+            detections = frame.annotations.detections if frame.annotations else []
+            descriptions = self._describe_objects(image, detections)
+            object_ids = [str(i) for i in range(len(detections))]
+            return DescriptionResult(descriptions=descriptions, object_ids=object_ids, model_name="DAM")
         except Exception as e:
             raise ProcessingError(f"Error in description processing: {e}")
 
@@ -73,22 +72,28 @@ class DescriptionFeature(BaseFeature):
         if not self.is_ready():
             raise ProcessingError("Description feature not initialized")
 
-        valid_frames = [f for f in frames if f.rgb_image is not None]
+        valid_frames = [f for f in frames if f.frame_data is not None]
         if not valid_frames:
-            return frames
+            return [DescriptionResult(descriptions=[]) for _ in frames]
 
         try:
-            images = [Image.fromarray(f.rgb_image) for f in valid_frames]
-            detections_list = [f.detections for f in valid_frames]
+            images = [Image.fromarray(f.frame_data) for f in valid_frames]
+            detections_list = [f.annotations.detections if f.annotations else [] for f in valid_frames]
             batch_descriptions = self._describe_objects_batch(images, detections_list)
 
-            for i, frame in enumerate(valid_frames):
-                if i < len(batch_descriptions):
+            results = []
+            for i, frame in enumerate(frames):
+                if frame.frame_data is None:
+                    results.append(DescriptionResult(descriptions=[]))
+                elif i < len(batch_descriptions):
                     descriptions = batch_descriptions[i]
-                    for j, detection in enumerate(frame.detections):
-                        if j < len(descriptions):
-                            detection.description = descriptions[j]
-            return frames
+                    detections = detections_list[i] if i < len(detections_list) else []
+                    object_ids = [str(j) for j in range(len(detections))]
+                    results.append(DescriptionResult(descriptions=descriptions, object_ids=object_ids, model_name="DAM"))
+                else:
+                    results.append(DescriptionResult(descriptions=[]))
+            
+            return results
         except Exception as e:
             raise ProcessingError(f"Error in batch description processing: {e}")
 

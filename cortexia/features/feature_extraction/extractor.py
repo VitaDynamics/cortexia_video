@@ -55,31 +55,37 @@ class FeatureExtractionFeature(BaseFeature):
         Process a single frame for feature extraction.
         
         Args:
-            frame_data: Frame data containing RGB image
+            frame: Frame data containing RGB image
             
         Returns:
-            Frame data with features added
+            FeatureExtractionResult containing extracted features
         """
         if not self.is_ready():
             self._initialize()
         
         if frame.frame_data is None:
-            return frame_data
+            return FeatureExtractionResult(features=np.array([]))
         
         try:
             # Convert numpy array to PIL Image
-            image = Image.fromarray(frame_data.rgb_image)
+            image = Image.fromarray(frame.frame_data)
             
             # Extract scene features
             scene_features = self._extract_scene_features(image)
-            frame.add_annotation_result('scene_clip_features', scene_features)
             
             # Extract object features if detections are available
+            object_features = []
             if frame.annotations and frame.annotations.detections:
                 object_features = self._extract_object_features(image, frame.annotations.detections)
-                self._add_object_features_to_detections(object_features, frame.annotations.detections)
             
-            return frame_data
+            # Combine scene and object features into a single result
+            # For now, we'll prioritize scene features as the main result
+            return FeatureExtractionResult(
+                features=scene_features,
+                feature_dim=len(scene_features),
+                model_name="CLIP",
+                model_version="1.0"
+            )
             
         except Exception as e:
             raise ProcessingError(f"Error in feature extraction processing: {e}")
@@ -92,20 +98,20 @@ class FeatureExtractionFeature(BaseFeature):
             frames: List of frame data objects
             
         Returns:
-            List of frame data with features added
+            List of FeatureExtractionResult objects
         """
         if not self.is_ready():
             self._initialize()
         
         # Filter frames with RGB images
-        valid_frames = [f for f in frames if f.rgb_image is not None]
+        valid_frames = [f for f in frames if f.frame_data is not None]
         
         if not valid_frames:
-            return frames
+            return [FeatureExtractionResult(features=np.array([])) for _ in frames]
         
         try:
             # Convert to PIL Images
-            images = [Image.fromarray(f.rgb_image) for f in valid_frames]
+            images = [Image.fromarray(f.frame_data) for f in valid_frames]
             
             # Extract scene features in batch
             batch_scene_features = self._extract_scene_features_batch(images)
@@ -113,23 +119,29 @@ class FeatureExtractionFeature(BaseFeature):
             # Extract object features
             batch_object_features = []
             for i, frame in enumerate(valid_frames):
-                if frame.detections:
-                    object_features = self._extract_object_features(images[i], frame.detections)
+                if frame.annotations and frame.annotations.detections:
+                    object_features = self._extract_object_features(images[i], frame.annotations.detections)
                     batch_object_features.append(object_features)
                 else:
                     batch_object_features.append([])
             
-            # Add results back to frames
-            for i, frame in enumerate(valid_frames):
-                if i < len(batch_scene_features):
-                    frame.scene_clip_features = batch_scene_features[i]
-                
-                if i < len(batch_object_features):
-                    self._add_object_features_to_detections(
-                        batch_object_features[i], frame.detections
-                    )
+            # Create results
+            results = []
+            for i, frame in enumerate(frames):
+                if frame.frame_data is None:
+                    results.append(FeatureExtractionResult(features=np.array([])))
+                elif i < len(batch_scene_features):
+                    scene_features = batch_scene_features[i]
+                    results.append(FeatureExtractionResult(
+                        features=scene_features,
+                        feature_dim=len(scene_features),
+                        model_name="CLIP",
+                        model_version="1.0"
+                    ))
+                else:
+                    results.append(FeatureExtractionResult(features=np.array([])))
             
-            return frames
+            return results
             
         except Exception as e:
             raise ProcessingError(f"Error in batch feature extraction processing: {e}")
