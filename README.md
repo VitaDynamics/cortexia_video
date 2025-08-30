@@ -44,6 +44,7 @@ graph TD
 - [SDK Usage](#sdk-usage)
 - [Available Components](#available-components)
 - [Configuration](#configuration)
+- [Architecture](#architecture)
 - [Running with Docker](#running-with-docker)
 - [API Reference](#api-reference)
 - [Troubleshooting](#troubleshooting)
@@ -118,10 +119,15 @@ Process video files with the command-line interface:
 # Process a video directory with default settings
 cortexia-video --config config/example_config.toml
 
-# Process a specific video
+# Process a specific video by setting environment variable
 export PROCESSING_INPUT_VIDEO_PATH=/path/to/your/video.mp4
 cortexia-video --config config/example_config.toml
+
+# Process in batch mode
+cortexia-video --config config/example_config.toml --batch_mode true
 ```
+
+The CLI automatically discovers and processes all video files (`.mp4`, `.avi`, `.mov`, `.mkv`) in the specified input directory.
 
 ### Using the SDK
 
@@ -159,6 +165,11 @@ print(f"Caption: {caption_result.caption}")
 blur_result = blur_gate.process_frame(frame)
 print(f"Blur score: {blur_result.score}, Passed: {blur_result.passed}")
 ```
+
+For more comprehensive examples, see the [cookbook](cookbook/) directory:
+- `basic_usage.py` - Simple component usage examples
+- `use_with_lance.py` - Integration with LanceDB for vector storage
+- `use_with_ray.py` - Distributed processing with Ray
 
 ## SDK Usage
 
@@ -354,8 +365,23 @@ description_viz_enabled = false
 ### Configuration Modes
 
 - **`config/example_config.toml`**: Balanced configuration for general use
-- **`config/light_mode.toml`**: Lightweight configuration for faster processing
+- **`config/light_mode.toml`**: Lightweight configuration for faster processing  
 - **`config/heavy_mode.toml`**: High-quality configuration with larger models
+
+## Architecture
+
+For detailed information about the modular architecture and data flow, see the documentation:
+
+- [Modular Architecture](docs/MODULAR_ARCHITECTURE.md) - Design philosophy and component structure
+- [Data Flow Architecture](docs/DATA_FLOW.md) - How data moves through the processing pipeline
+
+### Key Design Principles
+
+1. **Independent Components**: Each feature, gate, and sampler operates independently
+2. **Unified Data Management**: Single DataManager handles all input/output operations
+3. **Registry System**: Decorator-based registration for easy extensibility
+4. **Flexible Composition**: Components can be combined in any order
+5. **Type Safety**: Strong typing with Union types for backward compatibility
 
 ### Loading Configuration
 
@@ -504,5 +530,6 @@ config.load_config()  # Will raise exceptions for invalid config
 - Review the [tests](tests/) for usage examples
 - Ensure all dependencies are properly installed
 - Verify model download permissions and internet connectivity
+- Use the [cookbook examples](cookbook/) for practical implementation patterns
 
 For additional support, please refer to the project documentation or create an issue in the repository.
