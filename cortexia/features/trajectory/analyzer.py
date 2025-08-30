@@ -18,7 +18,7 @@ class TrajectoryFeature(BaseFeature):
     # Class attributes for BaseFeature
     output_schema = TrajectoryResult
     required_inputs = []
-    required_fields = ['trajecotry', 'current_traj_index']  # Note: typo in field name
+    required_fields = ['trajectory', 'current_traj_index']  # Note: typo in field name
     
     def __init__(self, config=None):
         super().__init__(config)
@@ -57,14 +57,14 @@ class TrajectoryFeature(BaseFeature):
         
         try:
             # Validate frame has required trajectory data
-            if not hasattr(frame, 'trajecotry') or not frame.trajecotry:
+            if not hasattr(frame, 'trajectory') or not frame.trajectory:
                 raise ProcessingError("Frame missing required trajectory data")
             
             if not hasattr(frame, 'current_traj_index') or frame.current_traj_index < 0:
                 raise ProcessingError("Frame missing valid current_traj_index")
             
             # Get trajectory points and current index
-            trajectory_points = frame.trajecotry
+            trajectory_points = frame.trajectory
             current_index = frame.current_traj_index
             
             # Run trajectory analysis

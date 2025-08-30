@@ -16,7 +16,7 @@ class BlurGate(BaseGate[GateResult]):
     
     def __init__(self, session_id: str = "default_session"):
         """Initialize the BlurGate as a pure metric calculator."""
-        self.logger = logging.getLogger(f"Decimatr.{self.__class__.__name__}")
+        self.logger = logging.getLogger(f"cortexia.{self.__class__.__name__}")
         self.session_id = session_id
 
     def _calculate_blur_score(self, frame_data: np.ndarray) -> float:

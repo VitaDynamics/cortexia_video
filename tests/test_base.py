@@ -272,7 +272,7 @@ class TestBaseFeature:
             frame_number=frame_number,
             timestamp=timestamp,
             source_video_id="test_video",
-            trajecotry=[trajectory_point],
+            trajectory=[trajectory_point],
             current_traj_index=0
         )
 
@@ -343,6 +343,6 @@ class TestBaseFeatureIntegration:
             frame_number=frame_number,
             timestamp=timestamp,
             source_video_id="test_video",
-            trajecotry=[trajectory_point],
+            trajectory=[trajectory_point],
             current_traj_index=0
         )

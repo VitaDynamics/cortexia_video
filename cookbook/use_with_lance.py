@@ -192,7 +192,7 @@ def build_video_frame_packet(row: pa.Table, row_idx: int, full_table: Optional[p
         timestamp=ts,
         source_video_id=vid,
         additional_metadata={},
-        trajecotry=trajectory_points,  # Note: field name has typo
+        trajectory=trajectory_points,  # Note: field name has typo
         current_traj_index=0  # Current frame is always at index 0
     )
 

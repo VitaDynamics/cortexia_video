@@ -30,7 +30,7 @@ class EntropyGate(BaseGate[GateResult]):
             session_id (str): Identifier for the current session, used in logging.
         """
         self.threshold = threshold if threshold is not None else self.DEFAULT_THRESHOLD
-        self.logger = logging.getLogger(f"Decimatr.{self.__class__.__name__}")
+        self.logger = logging.getLogger(f"cortexia.{self.__class__.__name__}")
         self.session_id = session_id
 
     def _calculate_entropy(self, frame_data: np.ndarray) -> float:

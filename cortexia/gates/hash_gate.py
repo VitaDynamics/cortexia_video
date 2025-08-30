@@ -25,7 +25,7 @@ class HashGate(BaseGate[GateResult]):
         session_id: str = "default_session",
     ):
         """Initialize HashGate as a pure hash calculator."""
-        self.logger = logging.getLogger(f"Decimatr.{self.__class__.__name__}")
+        self.logger = logging.getLogger(f"cortexia.{self.__class__.__name__}")
         self.session_id = session_id
         self.hash_type = hash_type
         # Create image hasher

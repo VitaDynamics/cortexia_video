@@ -41,7 +41,7 @@ class ClipGate(BaseGate[GateResult]):
             clip_pretrained_weights: Pre-trained weights to use
             device: Device to perform inference on. Auto-detects if None.
         """
-        self.logger = logging.getLogger(f"Decimatr.{self.__class__.__name__}")
+        self.logger = logging.getLogger(f"cortexia.{self.__class__.__name__}")
         self.session_id = session_id
         self.clip_model_name = clip_model_name
         self.clip_pretrained_weights = clip_pretrained_weights

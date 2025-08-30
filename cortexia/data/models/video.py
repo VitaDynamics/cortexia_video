@@ -100,7 +100,7 @@ class VideoFramePacket:
     timestamp: datetime.timedelta  # Timestamp of the frame relative to the video start
     source_video_id: str  # A unique identifier for the source video file or stream
     # Action Related 
-    trajecotry: List[TrajectoryPoint]
+    trajectory: List[TrajectoryPoint]
     current_traj_index: int # Indicate the current frame's position in the trajectory list.
 
     # Core metadata

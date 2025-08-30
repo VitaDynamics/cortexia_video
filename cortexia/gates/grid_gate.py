@@ -27,7 +27,7 @@ class GridGate(BaseGate[GateResult]):
         self.grid_rows = grid_rows
         self.grid_cols = grid_cols
         self.cell_hash_size = cell_hash_size
-        self.logger = logging.getLogger(f"Decimatr.{self.__class__.__name__}")
+        self.logger = logging.getLogger(f"cortexia.{self.__class__.__name__}")
         self.session_id = session_id
 
     def _get_pil_image(self, packet: VideoFramePacket) -> Image.Image:

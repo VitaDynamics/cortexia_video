@@ -7,9 +7,9 @@ import logging
 import torch
 
 from ..data.models.video import VideoFramePacket
-from decimatr.logging_config import setup_logging
-from decimatr.samplers.base_sampler import BaseSampler
-from decimatr.samplers.clip_utils import get_image_embeddings
+from cortexia.logging_config import setup_logging
+from cortexia.samplers.base_sampler import BaseSampler
+from cortexia.samplers.clip_utils import get_image_embeddings
 from PIL import Image
 
 class DSKSampler(BaseSampler):

@@ -2,8 +2,8 @@ import uuid
 from typing import Any, Dict, List, Optional, Iterator, Union
 
 from ..data.models.video import VideoFramePacket
-from decimatr.logging_config import setup_logging
-from decimatr.samplers.base_sampler import BaseSampler
+from cortexia.logging_config import setup_logging
+from cortexia.samplers.base_sampler import BaseSampler
 
 
 class UniformSampler(BaseSampler):

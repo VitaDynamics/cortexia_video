@@ -159,7 +159,7 @@ def build_video_frame_packet_from_dict(row_data: Dict[str, Any], row_idx: int) -
         timestamp=ts,
         source_video_id=vid,
         additional_metadata={},
-        trajecotry=[],  # Empty trajectory for simplicity
+        trajectory=[],  # Empty trajectory for simplicity
         current_traj_index=0
     )
 
