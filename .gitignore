@@ -1,7 +1,6 @@
 .venv
 checkpoints/*
-data/
-
+dummys/
 
 # Added by Claude Task Master
 # Logs

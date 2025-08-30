@@ -1,3 +1,49 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
-setup()
+setup(
+    name="cortexia",
+    version="0.1.0",
+    description="Video annotation framework",
+    packages=find_packages(),
+    python_requires=">=3.10",
+    install_requires=[
+        "PyYAML>=6.0",
+        "toml>=0.10.2",
+        "pydantic>=2.0",
+        "opencv-python>=4.5.0",
+        "numpy>=1.21.0",
+        "transformers",
+        "torch",
+        "pillow",
+        "accelerate",
+        "pretty-errors>=1.2.25",
+        "modelscope>=1.25.0",
+        "pyvips>=3.0.0",
+        "sahi>=0.11.23",
+        "matplotlib>=3.10.3",
+        "sentencepiece>=0.2.0",
+        "protobuf>=6.30.2",
+        "decord>=0.6.0",
+        "ftfy>=6.3.1",
+        "einops>=0.8.1",
+        "timm>=1.0.15",
+        "wandb>=0.19.11",
+        "tiktoken>=0.9.0",
+        "fairscale>=0.4.13",
+        "scipy>=1.15.3",
+        "nltk>=3.9.1",
+        "ipykernel>=6.29.5",
+        "json-repair>=0.47.7",
+        "python-dotenv>=1.1.1",
+        "pylance>=0.33.0",
+        "imagehash>=4.3.2",
+        "pyarrow>=21.0.0",
+        "open-clip-torch>=3.1.0",
+        "pytest>=8.4.1",
+    ],
+    entry_points={
+        "console_scripts": [
+            "cortexia-video=cortexia.cli.main:main",
+        ],
+    },
+)

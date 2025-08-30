@@ -1,5 +1,5 @@
 [project]
-name = "cortexia-video"
+name = "cortexia"
 version = "0.1.0"
 description = "Video annotation framework"
 readme = "README.md"
@@ -38,14 +38,21 @@ dependencies = [
     "json-repair>=0.47.7",
     "python-dotenv>=1.1.1",
     "pylance>=0.33.0",
+    "imagehash>=4.3.2",
+    "pyarrow>=21.0.0",
+    "open-clip-torch>=3.1.0",
+    "pytest>=8.4.1",
+    "pydantic-numpy>=8.0.1",
+    "ray[default]>=2.49.0",
+    "pandas>=2.3.2",
 ]
 
 [project.scripts]
-cortexia-video = "cortexia_video.main:main"
+cortexia-video = "cortexia.cli.main:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["cortexia_video"]
+where = ["cortexia"]

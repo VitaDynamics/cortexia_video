@@ -10,9 +10,9 @@ RUN pip3 install --no-cache-dir uv
 WORKDIR /app
 
 COPY pyproject.toml setup.py uv.lock ./
-COPY cortexia_video ./cortexia_video
+COPY cortexia ./cortexia
 
-RUN cd ./cortexia_video 
+RUN cd ./cortexia 
 
 RUN uv venv --system --python 3.11
 
