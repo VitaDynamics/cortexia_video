@@ -342,10 +342,11 @@ try:
         DATASET_PATH,
         columns=columns
     )
-    
+
     # Apply row limit if specified
-    if ROW_LIMIT > 0:
-        dataset = dataset.limit(ROW_LIMIT)
+    effective_limit = ROW_LIMIT if ROW_LIMIT > 0 else None
+    if effective_limit is not None:
+        dataset = dataset.limit(effective_limit)
     
     print(f"Loaded dataset with {dataset.count()} rows")
     print(f"Schema: {dataset.schema()}")
@@ -357,7 +358,8 @@ except Exception as e:
     
     # Create synthetic data
     synthetic_data = []
-    for i in range(min(ROW_LIMIT, 8)):
+    synthetic_rows = min(ROW_LIMIT, 8) if ROW_LIMIT > 0 else 8
+    for i in range(synthetic_rows):
         # Create a simple synthetic image (gradient)
         img_array = np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8)
         img_pil = Image.fromarray(img_array)
@@ -473,7 +475,8 @@ print(f"  - CPUs: {RAY_NUM_CPUS}")
 print(f"  - GPUs: {RAY_NUM_GPUS}")
 print(f"  - Batch size: {RAY_BATCH_SIZE}")
 print(f"  - Concurrency: {RAY_CONCURRENCY}")
-print(f"  - Row limit: {ROW_LIMIT}")
+row_limit_str = str(ROW_LIMIT) if ROW_LIMIT > 0 else "unlimited"
+print(f"  - Row limit: {row_limit_str}")
 
 # %% [markdown]
 # ## Cleanup
