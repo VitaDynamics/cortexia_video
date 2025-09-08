@@ -328,54 +328,30 @@ class MultiFeatureRayProcessor:
 
 # %%
 print("Loading Lance dataset with Ray Data...")
-try:
-    # Read Lance dataset with Ray Data
-    columns = [IMAGE_COL]
-    if VIDEO_ID_COL:
-        columns.append(VIDEO_ID_COL)
-    if FRAME_NUM_COL:
-        columns.append(FRAME_NUM_COL)
-    if TIMESTAMP_COL:
-        columns.append(TIMESTAMP_COL)
-    
-    dataset = ray.data.read_lance(
-        DATASET_PATH,
-        columns=columns
-    )
 
-    # Apply row limit if specified
-    effective_limit = ROW_LIMIT if ROW_LIMIT > 0 else None
-    if effective_limit is not None:
-        dataset = dataset.limit(effective_limit)
+# Read Lance dataset with Ray Data
+columns = [IMAGE_COL]
+if VIDEO_ID_COL:
+    columns.append(VIDEO_ID_COL)
+if FRAME_NUM_COL:
+    columns.append(FRAME_NUM_COL)
+if TIMESTAMP_COL:
+    columns.append(TIMESTAMP_COL)
+
+dataset = ray.data.read_lance(
+    DATASET_PATH,
+    columns=columns
+)
+
+# Apply row limit if specified
+effective_limit = ROW_LIMIT if ROW_LIMIT > 0 else None
+if effective_limit is not None:
+    dataset = dataset.limit(effective_limit)
+
+print(f"Loaded dataset with {dataset.count()} rows")
+print(f"Schema: {dataset.schema()}")
     
-    print(f"Loaded dataset with {dataset.count()} rows")
-    print(f"Schema: {dataset.schema()}")
-    
-except Exception as e:
-    print(f"Failed to load Lance dataset: {e}")
-    # Fallback: create a simple synthetic dataset for demonstration
-    print("Creating synthetic dataset for demonstration...")
-    
-    # Create synthetic data
-    synthetic_data = []
-    synthetic_rows = min(ROW_LIMIT, 8) if ROW_LIMIT > 0 else 8
-    for i in range(synthetic_rows):
-        # Create a simple synthetic image (gradient)
-        img_array = np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8)
-        img_pil = Image.fromarray(img_array)
-        img_bytes = io.BytesIO()
-        img_pil.save(img_bytes, format='JPEG')
-        img_bytes = img_bytes.getvalue()
-        
-        synthetic_data.append({
-            IMAGE_COL: img_bytes,
-            VIDEO_ID_COL: f"synthetic_video_{i % 2}" if VIDEO_ID_COL else None,
-            FRAME_NUM_COL: i if FRAME_NUM_COL else None,
-            TIMESTAMP_COL: float(i) if TIMESTAMP_COL else None
-        })
-    
-    dataset = ray.data.from_items(synthetic_data)
-    print(f"Created synthetic dataset with {dataset.count()} rows")
+
 
 # %% [markdown]
 # ## Initialize Multi-Feature Processor
