@@ -6,12 +6,15 @@ from PIL import Image
 
 from ..base import BaseFeature
 from ...api.exceptions import ModelLoadError, ProcessingError
+from ...core.prompts import with_prompt
 from ...data.models.video import VideoFramePacket
 from ...data.models.result.tagging_result import TaggingResult
 from ..registry import feature_registry
 from .models import Qwen2_5VLLister
 
+
 @feature_registry.register("listing")
+@with_prompt("List all objects in this image.")
 class ListingFeature(BaseFeature):
     """Object listing feature using various models"""
     
@@ -28,11 +31,17 @@ class ListingFeature(BaseFeature):
             # Get model configuration
             model_name = self.get_config_param("model", "vikhyatk/moondream2")
 
-            # Initialize ObjectLister with the same config dict
-            self.lister = Qwen2_5VLLister(self.config)
-            
+            # The config passed to Qwen2_5VLLister can contain the prompt.
+            lister_config = self.config.copy() if self.config else {}
+            if hasattr(self, "prompt") and self.prompt:
+                # The Qwen2_5VLLister already reads "task_prompt" from config.
+                lister_config["task_prompt"] = self.prompt
+
+            # Initialize ObjectLister with the config dict
+            self.lister = Qwen2_5VLLister(lister_config)
+
             self.initialized = True
-            
+
         except Exception as e:
             raise ModelLoadError(f"Failed to initialize listing model: {e}")
 
