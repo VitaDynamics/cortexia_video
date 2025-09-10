@@ -27,18 +27,33 @@ class MoonDreamCaptioner(ImageCaptioner):
     """Captioner that uses the MoonDream2 VLM."""
 
     def __init__(self, config: dict = None):
+        """Initialize the captioner.
+
+        Args:
+            config: Optional configuration with keys ``model``, ``revision`` and
+                ``device_map``. ``device_map`` defaults to "auto" when multiple
+                GPUs are available, otherwise the current device ("cuda" or
+                "cpu"). The ``device`` key is used as the single-device default
+                for backward compatibility.
+        """
         super().__init__(config)
-        # This is a 2B Model in huggingface
         model_name = self.config.get("model", "vikhyatk/moondream2")
         revision = self.config.get("revision", "2025-06-21")
-        device = self.config.get("device", "cuda")
-        
+        default_device = self.config.get(
+            "device", "cuda" if torch.cuda.is_available() else "cpu"
+        )
+        device_map = self.config.get(
+            "device_map",
+            "auto" if torch.cuda.device_count() > 1 else default_device,
+        )
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
             revision=revision,
             trust_remote_code=True,
-            device_map={"": device},
+            device_map=device_map,
+            torch_dtype=torch.float16,
         )
+        self.device = torch.device(next(iter(self.model.hf_device_map.values())))
 
     def caption_image(self, image_data: Any) -> str:
         if isinstance(image_data, np.ndarray):

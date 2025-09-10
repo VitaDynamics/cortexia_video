@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import gc
 import torch
@@ -28,13 +28,28 @@ class BaseDepthEstimator(ABC):
 
 
 class DepthProEstimator(BaseDepthEstimator):
-    def __init__(self):
-        """Initialize the depth estimator with model and transform."""
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model_name = "apple/DepthPro-hf"
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """Initialize the depth estimator with model and transform.
+
+        Args:
+            config: Optional configuration with ``device_map`` controlling model
+                placement. Defaults to "auto" when multiple GPUs are available,
+                otherwise the current device ("cuda" or "cpu").
+        """
+        self.config = config or {}
+        model_name = self.config.get("model", "apple/DepthPro-hf")
+        default_device = "cuda" if torch.cuda.is_available() else "cpu"
+        device_map = self.config.get(
+            "device_map",
+            "auto" if torch.cuda.device_count() > 1 else default_device,
+        )
         self.processor = DepthProImageProcessorFast.from_pretrained(model_name)
-        self.model = DepthProForDepthEstimation.from_pretrained(model_name)
-        self.model.to(self.device)
+        self.model = DepthProForDepthEstimation.from_pretrained(
+            model_name,
+            device_map=device_map,
+            torch_dtype=torch.float16,
+        )
+        self.device = torch.device(next(iter(self.model.hf_device_map.values())))
         self.model.eval()
 
     def release(self) -> None:

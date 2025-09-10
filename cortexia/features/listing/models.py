@@ -94,15 +94,29 @@ class ObjectLister(ABC):
 
 class MoonDreamLister(ObjectLister):
     def __init__(self, config: dict):
+        """MoonDream-based object lister.
+
+        Args:
+            config: Configuration with optional ``model`` and ``device_map`` keys.
+                ``device_map`` defaults to "auto" when multiple GPUs are
+                available, otherwise the current device ("cuda" or "cpu").
+        """
         super().__init__(config)
         model_name = self.get_config_param("model", "vikhyatk/moondream2")
         revision = "2025-04-14"
+        default_device = "cuda" if torch.cuda.is_available() else "cpu"
+        device_map = self.get_config_param(
+            "device_map",
+            "auto" if torch.cuda.device_count() > 1 else default_device,
+        )
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
             revision=revision,
             trust_remote_code=True,
-            device_map={"": "cuda"},
+            device_map=device_map,
+            torch_dtype=torch.float16,
         )
+        self.device = torch.device(next(iter(self.model.hf_device_map.values())))
 
     def release(self) -> None:
         try:
@@ -175,13 +189,28 @@ class MoonDreamLister(ObjectLister):
 
 class Qwen2_5VLLister(ObjectLister):
     def __init__(self, config: dict):
+        """Qwen2.5-VL based object lister.
+
+        Args:
+            config: Configuration with optional ``model`` and ``device_map`` keys.
+                ``device_map`` defaults to "auto" when multiple GPUs are
+                available, otherwise the current device ("cuda" or "cpu").
+        """
         super().__init__(config)
         model_name = self.get_config_param("model", "Qwen/Qwen2.5-VL-3B-Instruct")
         self.task_prompt = self.get_config_param("task_prompt", "List all objects in this image.")
+        default_device = "cuda" if torch.cuda.is_available() else "cpu"
+        device_map = self.get_config_param(
+            "device_map",
+            "auto" if torch.cuda.device_count() > 1 else default_device,
+        )
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            model_name, torch_dtype=torch.bfloat16, device_map="cuda:0"
+            model_name,
+            device_map=device_map,
+            torch_dtype=torch.float16,
         )
         self.processor = AutoProcessor.from_pretrained(model_name)
+        self.device = torch.device(next(iter(self.model.hf_device_map.values())))
 
     def release(self) -> None:
         try:
@@ -233,7 +262,7 @@ class Qwen2_5VLLister(ObjectLister):
                 padding=True,
                 return_tensors="pt",
             )
-            inputs = inputs.to(self.model.device)
+            inputs = inputs.to(self.device)
             generated_ids = self.model.generate(**inputs, max_new_tokens=128)
             generated_ids_trimmed = [
                 out_ids[len(in_ids) :]
@@ -300,7 +329,7 @@ class Qwen2_5VLLister(ObjectLister):
                 padding=True,
                 return_tensors="pt",
             )
-            inputs = inputs.to(self.model.device)
+            inputs = inputs.to(self.device)
             generated_ids = self.model.generate(**inputs, max_new_tokens=128)
             generated_ids_trimmed = [
                 out_ids[len(in_ids) :]

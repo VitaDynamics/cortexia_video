@@ -49,17 +49,16 @@ def polygon_to_mask(polygon: List[Tuple[int, int]], image_shape: Tuple[int, int]
 # NOTE: A label of 0 means the point is a negative prompt-the user wants the segmented mask to exclude the region around this point.
 class ObjectSegmenter:
     def __init__(self, config: dict = None):
-        """
-        Initialize the ObjectSegmenter with SAM model and processor.
+        """Initialize the ObjectSegmenter with SAM model and processor.
 
         Args:
-            config: Configuration dictionary
+            config: Configuration dictionary. Supports ``device_map`` which
+                defaults to "auto" when multiple GPUs are available, otherwise
+                the current device ("cuda" or "cpu").
         """
         self.config = config or {}
         self.model = None
         self.processor = None
-        # Support different devices for different model and processor
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.logger = logging.getLogger(__name__)
         self._load_model()
 
@@ -92,11 +91,18 @@ class ObjectSegmenter:
         model_name = self.config.get(
             "model", "facebook/sam-vit-base"
         )
+        default_device = "cuda" if torch.cuda.is_available() else "cpu"
+        device_map = self.config.get(
+            "device_map", "auto" if torch.cuda.device_count() > 1 else default_device
+        )
         try:
-            # Load model and place it on the correct device
-            model = SamModel.from_pretrained(model_name)
-            self.model = model.to(self.device)  # Correct way to move model to device
+            self.model = SamModel.from_pretrained(
+                model_name,
+                device_map=device_map,
+                torch_dtype=torch.float16,
+            )
             self.processor = SamProcessor.from_pretrained(model_name)
+            self.device = torch.device(next(iter(self.model.hf_device_map.values())))
         except Exception as e:
             raise RuntimeError(f"Failed to load SAM model: {str(e)}")
 
