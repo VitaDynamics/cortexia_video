@@ -74,7 +74,7 @@ OUTPUT_LANCE = os.environ.get(
     str(_repo_path / "dummys" / "lance_data" / "all_in_one_ray_processed.lance")
 )
 OUTPUT_PARQUET = os.environ.get(
-    "PARQUET_OUTPUT", 
+    "PARQUET_OUTPUT",
     str(_repo_path / "dummys" / "lance_data" / "all_in_one_ray_processed.parquet")
 )
 
@@ -86,6 +86,10 @@ RAY_CONCURRENCY = int(os.environ.get("RAY_CONCURRENCY", "2"))
 
 # Limit rows for demo
 ROW_LIMIT = int(os.environ.get("LANCE_ROW_LIMIT", "16"))
+
+# Write mode: "create" (default) creates a new table at OUTPUT_LANCE.
+# Set LANCE_WRITE_MODE="update" to merge results back into DATASET_PATH.
+LANCE_WRITE_MODE = os.environ.get("LANCE_WRITE_MODE", "create").lower()
 
 # %% [markdown]
 # ## Initialize Ray
@@ -414,16 +418,40 @@ try:
         # Create empty table with the correct schema
         arrow_table = pa.Table.from_arrays([], schema=processed_dataset.schema())
     
-    # Write to Lance
-    output_path = Path(OUTPUT_LANCE)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    if output_path.exists():
-        import shutil
-        shutil.rmtree(output_path, ignore_errors=True)
-    
-    lance.write_dataset(arrow_table, str(output_path))
-    print(f"Results saved to Lance dataset: {output_path}")
+    if LANCE_WRITE_MODE == "update":
+        # Merge results into the existing Lance dataset
+        output_path = Path(DATASET_PATH)
+        existing_ds = lance.dataset(str(output_path))
+        existing_table = existing_ds.to_table()
+
+        if len(existing_table) != len(arrow_table):
+            raise ValueError(
+                "Existing dataset row count does not match processed results. "
+                "Disable ROW_LIMIT to update in place."
+            )
+
+        merged_table = existing_table
+        for name in arrow_table.column_names:
+            column = arrow_table[name]
+            if name in merged_table.column_names:
+                idx = merged_table.column_names.index(name)
+                merged_table = merged_table.set_column(idx, name, column)
+            else:
+                merged_table = merged_table.append_column(name, column)
+
+        lance.write_dataset(merged_table, str(output_path), mode="overwrite")
+        print(f"Results merged into existing Lance dataset: {output_path}")
+    else:
+        # Write to a new Lance dataset
+        output_path = Path(OUTPUT_LANCE)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if output_path.exists():
+            import shutil
+            shutil.rmtree(output_path, ignore_errors=True)
+
+        lance.write_dataset(arrow_table, str(output_path))
+        print(f"Results saved to Lance dataset: {output_path}")
     
 except Exception as e:
     print(f"Failed to save as Lance dataset: {e}")
