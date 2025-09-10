@@ -11,19 +11,28 @@ from transformers.models.auto.processing_auto import AutoProcessor
 class ObjectDetector:
     def __init__(self, config: dict = None):
         """Initialize the object detector with model from config.
-        
+
         Args:
-            config: Configuration dictionary with model settings
+            config: Configuration dictionary with model settings. Supports
+                ``device_map`` which defaults to "auto" when multiple GPUs are
+                available, otherwise the current device ("cuda" or "cpu").
         """
         self.config = config or {}
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
+
         # Initialize grounding dino model
         model_name = self.config.get("model", "IDEA-Research/grounding-dino-base")
-        
+        default_device = "cuda" if torch.cuda.is_available() else "cpu"
+        device_map = self.config.get(
+            "device_map", "auto" if torch.cuda.device_count() > 1 else default_device
+        )
 
-        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_name).to(self.device)
+        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(
+            model_name,
+            device_map=device_map,
+            torch_dtype=torch.float16,
+        )
         self.processor = AutoProcessor.from_pretrained(model_name)
+        self.device = torch.device(next(iter(self.model.hf_device_map.values())))
 
         
         # SAM model is not directly integrated in this class to avoid compatibility issues

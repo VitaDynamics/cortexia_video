@@ -17,6 +17,7 @@ class ObjectDescriber:
         Supported config keys (all optional):
         - 'model_settings.description_model' or 'description_model' or 'model': model id (default: 'nvidia/DAM-3B-Self-Contained')
         - 'device': explicit device string
+        - 'device_map': HuggingFace device map; defaults to "auto" when multiple GPUs are available, otherwise the current device
         - 'description_settings.{temperature,top_p,num_beams,max_tokens}': decoding params
         """
         self.config: Dict[str, Any] = config or {}
@@ -29,17 +30,22 @@ class ObjectDescriber:
             or 'nvidia/DAM-3B-Self-Contained'
         )
 
-        device_str = self.config.get('device')
-        self.device = torch.device(device_str) if device_str else torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
+        default_device = self.config.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
+        device_map = self.config.get(
+            'device_map',
+            'auto' if torch.cuda.device_count() > 1 else default_device,
+        )
+
         try:
             # Load model with proper settings
             self.model = AutoModel.from_pretrained(
                 model_name,
                 trust_remote_code=True,
-                torch_dtype=torch.float16
-            ).to(self.device)
-            
+                torch_dtype=torch.float16,
+                device_map=device_map,
+            )
+            self.device = torch.device(next(iter(self.model.hf_device_map.values())))
+
             # Initialize DAM with conversation mode and prompt mode as in the self-contained example
             self.dam = self.model.init_dam(conv_mode='v1', prompt_mode='full+focal_crop')
             self.logger.info(f"Successfully loaded DAM model from {model_name}")
