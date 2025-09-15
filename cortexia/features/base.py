@@ -1,5 +1,6 @@
 """Base class for all annotation features"""
 
+import gc
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Type, Union
 
@@ -97,9 +98,30 @@ class BaseFeature(ABC):
         Release resources for this feature.
 
         Subclasses may override to explicitly free large models, GPU memory,
-        file handles, and other resources. Default implementation is a no-op.
+        file handles, and other resources. Implementations should ``del``
+        any model instances before flushing CUDA caches. Default implementation
+        is a no-op.
         """
         return None
+
+    @staticmethod
+    def flush_cuda_cache() -> None:
+        """Free cached CUDA memory and run garbage collection.
+
+        This utility is helpful for features that load large models on the GPU
+        and want to explicitly release memory when finished.
+
+        Returns:
+            None
+        """
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            # Torch may be missing or CUDA may be unavailable; ignore
+            pass
     
     @abstractmethod
     def process_frame(self, frame: VideoFramePacket, **inputs) -> BaseResult:
@@ -167,8 +189,9 @@ class BaseFeature(ABC):
         Release any resources held by this feature and mark it uninitialized.
 
         Subclasses should implement cleanup logic in `_release` and are expected
-        to set internal references (e.g., model objects) to None where helpful
-        for garbage collection. This method is idempotent.
+        to delete model instances (e.g., ``del self.model``) and then set
+        internal references to ``None`` so garbage collection and CUDA cache
+        flushing can reclaim memory. This method is idempotent.
         """
         try:
             self._release()

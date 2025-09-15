@@ -39,11 +39,14 @@ class ListingFeature(BaseFeature):
     def _release(self) -> None:
         """Release lister resources and free memory."""
         try:
-            if self.lister is not None and hasattr(self.lister, "release"):
-                try:
-                    self.lister.release()
-                except Exception:
-                    pass
+            if self.lister is not None:
+                if hasattr(self.lister, "release"):
+                    try:
+                        self.lister.release()
+                    except Exception:
+                        pass
+                del self.lister
+                self.flush_cuda_cache()
         finally:
             self.lister = None
     

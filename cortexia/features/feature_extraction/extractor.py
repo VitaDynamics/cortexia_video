@@ -34,11 +34,14 @@ class FeatureExtractionFeature(BaseFeature):
     def _release(self) -> None:
         """Release feature extraction engine and free memory."""
         try:
-            if self.engine is not None and hasattr(self.engine, "release"):
-                try:
-                    self.engine.release()
-                except Exception:
-                    pass
+            if self.engine is not None:
+                if hasattr(self.engine, "release"):
+                    try:
+                        self.engine.release()
+                    except Exception:
+                        pass
+                del self.engine
+                self.flush_cuda_cache()
         finally:
             self.engine = None
     
