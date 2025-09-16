@@ -553,45 +553,22 @@ else:
 # %% [markdown]
 # **Lets check some examples**
 
-# %%
-for i in range(min(2, n_rows)):
-    print(f"Row {i} -> caption: {cap_results[i].caption!r}")
-    print(f"Row {i} -> tags: {list_results[i].tags}")
-    # Handle new DetectionResult format with multiple detections
-    if hasattr(det_results[i], 'has_detections') and det_results[i].has_detections:
-        # Show first detection as example
-        first_det = det_results[i].detections[0]
-        print(
-            f"Row {i} -> det: count={det_results[i].count}, first: label={first_det.label!r}, score={first_det.score:.3f}, box={first_det.box.xyxy}"
-        )
-    else:
-        print(f"Row {i} -> det: count=0, no detections")
-    # Handle new SegmentationResult format with multiple segmentations
-    if hasattr(seg_results[i], 'has_segmentations') and seg_results[i].has_segmentations:
-        # Show first segmentation as example
-        first_seg = seg_results[i].segmentations[0]
-        print(
-            f"Row {i} -> seg: count={seg_results[i].count}, first: label={first_seg.label!r}, area={first_seg.area}, mask.shape={first_seg.mask.shape}"
-        )
-    else:
-        print(f"Row {i} -> seg: count=0, no segmentations")
-
 # %% [markdown]
 # **Lets write it into a table with annotation result**
 
 # %%
 col_caption_struct = results_to_struct_array(cap_results)
 col_tags_struct = results_to_struct_array(list_results)
-col_det_struct = results_to_struct_array(det_results)
-col_seg_struct = results_to_struct_array(seg_results)
-col_traj_struct = results_to_struct_array(traj_results)
+# col_det_struct = results_to_struct_array(det_results)
+# col_seg_struct = results_to_struct_array(seg_results)
+# col_traj_struct = results_to_struct_array(traj_results)
 
 annotated = table
 annotated = annotated.append_column("cortexia_caption", col_caption_struct)
 annotated = annotated.append_column("cortexia_tags", col_tags_struct)
-annotated = annotated.append_column("cortexia_detection", col_det_struct)
-annotated = annotated.append_column("cortexia_segmentation", col_seg_struct)
-annotated = annotated.append_column("cortexia_trajectory", col_traj_struct)
+# annotated = annotated.append_column("cortexia_detection", col_det_struct)
+# annotated = annotated.append_column("cortexia_segmentation", col_seg_struct)
+# annotated = annotated.append_column("cortexia_trajectory", col_traj_struct)
 
 # %%
 try:
@@ -640,35 +617,6 @@ try:
         print(f"Annotated Lance dataset written to: {output_path}")
 except Exception as e:
     print(f"Lance write failed or unavailable: {e}")
-
-# %%
-# Take a quick preview for this table
-def preview_rows(tbl: pa.Table, k: int = 3):
-    print("Previewing first", min(k, len(tbl)), "rows (selected columns):")
-    cols_to_show = [
-        c for c in [
-            VIDEO_ID_COL or None,
-            FRAME_NUM_COL or None,
-            "cortexia_caption",
-            "cortexia_tags",
-            "cortexia_detection",
-            "cortexia_segmentation",
-            "cortexia_trajectory",
-        ] if c and c in tbl.column_names
-    ]
-    for i in range(min(k, len(tbl))):
-        row = tbl.slice(i, 1)
-        summary = {}
-        for c in cols_to_show:
-            cell = row[c][0]
-            try:
-                summary[c] = cell.as_py()
-            except Exception:
-                summary[c] = str(cell)
-        print(f"Row {i}:", summary)
-
-preview_rows(annotated, k=3)
-
 # %%
 
 
