@@ -6,6 +6,7 @@ import numpy as np
 from PIL import Image
 from transformers import AutoModelForCausalLM
 import torch
+import traceback
 
 
 class ImageCaptioner(ABC):
@@ -51,7 +52,6 @@ class MoonDreamCaptioner(ImageCaptioner):
             revision=revision,
             trust_remote_code=True,
             device_map=device_map,
-            torch_dtype=torch.float16,
         )
         self.device = torch.device(next(iter(self.model.hf_device_map.values())))
 
@@ -67,6 +67,9 @@ class MoonDreamCaptioner(ImageCaptioner):
             return str(result)
         except Exception as e:
             print(f"Error in image captioning: {e}")
+            traceback.print_exc() 
+            # Re-raise the exception to allow it to propagate
+            raise  
             return ""
 
     def release(self) -> None:

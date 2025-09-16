@@ -29,7 +29,6 @@ class ObjectDetector:
         self.model = AutoModelForZeroShotObjectDetection.from_pretrained(
             model_name,
             device_map=device_map,
-            torch_dtype=torch.float16,
         )
         self.processor = AutoProcessor.from_pretrained(model_name)
         self.device = torch.device(next(iter(self.model.hf_device_map.values())))
@@ -99,8 +98,41 @@ class ObjectDetector:
             truncation=True
         )
         
-        # Move inputs to device
-        inputs_on_device = {k: v.to(self.device) for k, v in inputs.items()}
+        # Add debugging logs for inputs
+        print(f"Debug: Detection input tensor shapes: {[f'{k}: {v.shape}' for k, v in inputs.items()]}")
+        print(f"Debug: Detection input tensor dtypes: {[f'{k}: {v.dtype}' for k, v in inputs.items()]}")
+        
+        # Check for NaN or inf values in inputs and fix them
+        for key, tensor in inputs.items():
+            if torch.is_tensor(tensor):
+                if torch.isnan(tensor).any():
+                    print(f"Warning: NaN values found in detection input tensor '{key}'")
+                    # Replace NaN with 0
+                    tensor = torch.nan_to_num(tensor, nan=0.0, posinf=0.0, neginf=0.0)
+                    inputs[key] = tensor
+                if torch.isinf(tensor).any():
+                    print(f"Warning: Inf values found in detection input tensor '{key}'")
+                    # Replace inf with finite values
+                    tensor = torch.nan_to_num(tensor, nan=0.0, posinf=1e6, neginf=-1e6)
+                    inputs[key] = tensor
+        
+        # Move inputs to device with error handling
+        try:
+            inputs_on_device = {k: v.to(self.device) for k, v in inputs.items()}
+        except RuntimeError as e:
+            if "CUDA out of memory" in str(e) or "device-side assert" in str(e):
+                print(f"CUDA error when moving detection tensors to device: {e}")
+                print("Attempting to process with CPU instead...")
+                # Try to move to CPU as fallback
+                try:
+                    self.device = torch.device("cpu")
+                    inputs_on_device = {k: v.to(self.device) for k, v in inputs.items()}
+                except Exception as cpu_e:
+                    print(f"Failed to move detection tensors to CPU as well: {cpu_e}")
+                    # Return empty detections for all images in the batch
+                    return [[] for _ in images_data]
+            else:
+                raise
         
         # Run model inference
         with torch.no_grad():
