@@ -49,11 +49,14 @@ class SegmentationFeature(BaseFeature):
     def _release(self) -> None:
         """Release segmenter resources and clear device refs."""
         try:
-            if self.segmenter is not None and hasattr(self.segmenter, "release"):
-                try:
-                    self.segmenter.release()
-                except Exception:
-                    pass
+            if self.segmenter is not None:
+                if hasattr(self.segmenter, "release"):
+                    try:
+                        self.segmenter.release()
+                    except Exception:
+                        pass
+                del self.segmenter
+                self.flush_cuda_cache()
         finally:
             self.segmenter = None
             self.device = None

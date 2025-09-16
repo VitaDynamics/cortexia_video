@@ -59,6 +59,8 @@ class CaptionFeature(BaseFeature):
                     self.captioner.release()
                 except Exception:
                     pass
+                del self.captioner
+                self.flush_cuda_cache()
         finally:
             self.captioner = None
             self.device = None

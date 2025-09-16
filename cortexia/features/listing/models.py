@@ -207,7 +207,6 @@ class Qwen2_5VLLister(ObjectLister):
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_name,
             device_map=device_map,
-            torch_dtype=torch.float16,
         )
         self.processor = AutoProcessor.from_pretrained(model_name)
         self.device = torch.device(next(iter(self.model.hf_device_map.values())))

@@ -39,11 +39,14 @@ class ListingFeature(BaseFeature):
     def _release(self) -> None:
         """Release lister resources and free memory."""
         try:
-            if self.lister is not None and hasattr(self.lister, "release"):
-                try:
-                    self.lister.release()
-                except Exception:
-                    pass
+            if self.lister is not None:
+                if hasattr(self.lister, "release"):
+                    try:
+                        self.lister.release()
+                    except Exception:
+                        pass
+                del self.lister
+                self.flush_cuda_cache()
         finally:
             self.lister = None
     
@@ -165,6 +168,13 @@ class ListingFeature(BaseFeature):
         results = []
         if self.lister is None:
             return [[] for _ in images]
-        for image in images:
-            results.append(self.lister.list_objects_in_image(image))
+        for i, image in enumerate(images):
+            print(f"Debug: Processing image {i+1}/{len(images)} in batch")
+            try:
+                result = self.lister.list_objects_in_image(image)
+                results.append(result)
+                print(f"Debug: Successfully processed image {i+1}, found {len(result)} objects")
+            except Exception as e:
+                print(f"Error processing image {i+1}: {e}")
+                results.append([])
         return results

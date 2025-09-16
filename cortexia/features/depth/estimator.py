@@ -38,11 +38,14 @@ class DepthFeature(BaseFeature):
     def _release(self) -> None:
         """Release depth estimator resources and free memory."""
         try:
-            if self.estimator is not None and hasattr(self.estimator, "release"):
-                try:
-                    self.estimator.release()
-                except Exception:
-                    pass
+            if self.estimator is not None:
+                if hasattr(self.estimator, "release"):
+                    try:
+                        self.estimator.release()
+                    except Exception:
+                        pass
+                del self.estimator
+                self.flush_cuda_cache()
         finally:
             self.estimator = None
             self.device = None

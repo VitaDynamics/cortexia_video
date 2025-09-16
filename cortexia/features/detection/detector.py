@@ -51,11 +51,14 @@ class DetectionFeature(BaseFeature):
     def _release(self) -> None:
         """Release detector resources and clear device refs."""
         try:
-            if self.detector is not None and hasattr(self.detector, "release"):
-                try:
-                    self.detector.release()
-                except Exception:
-                    pass
+            if self.detector is not None:
+                if hasattr(self.detector, "release"):
+                    try:
+                        self.detector.release()
+                    except Exception:
+                        pass
+                del self.detector
+                self.flush_cuda_cache()
         finally:
             self.detector = None
             self.device = None
