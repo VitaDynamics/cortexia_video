@@ -4,6 +4,8 @@
 # Streaming example that reads Lance batches, runs Cortexia features with
 # PyTorch inference optimizations, and writes results directly to disk without
 # ever storing all predictions in memory.
+#
+# 方案三：批内写片 + 合并更新 Lance。
 
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ from typing import Any, Dict, Iterator, List, MutableMapping, Optional, Sequence
 import numpy as np
 import pyarrow as pa
 import pyarrow.dataset as ds
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import torch
 from PIL import Image
@@ -251,6 +254,15 @@ def extract_sample_ids(batch: pa.Table, row_offset: int) -> List[int]:
     return [row_offset + i for i in range(len(batch))]
 
 
+def _json_default(value: Any) -> Any:
+    """Helper to make complex feature results JSON serializable."""
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if hasattr(value, "__dict__"):
+        return value.__dict__
+    return str(value)
+
+
 def convert_results_to_table(
     sample_ids: Sequence[int],
     round_name: str,
@@ -263,6 +275,8 @@ def convert_results_to_table(
 
     caption_texts: List[str] = [""] * len(sample_ids)
     tags_json: List[str] = ["[]"] * len(sample_ids)
+    detection_json: List[str] = ["[]"] * len(sample_ids)
+    segmentation_json: List[str] = ["[]"] * len(sample_ids)
 
     if "caption" in batch_outputs:
         for idx, result in enumerate(batch_outputs["caption"]):
@@ -272,14 +286,30 @@ def convert_results_to_table(
         for idx, result in enumerate(batch_outputs["listing"]):
             tags = list(getattr(result, "tags", []) or [])
             tags_json[idx] = json.dumps(tags)
+    if "detection" in batch_outputs:
+        for idx, result in enumerate(batch_outputs["detection"]):
+            detections = getattr(result, "detections", [])
+            try:
+                detection_json[idx] = json.dumps(detections, default=_json_default)
+            except TypeError:
+                detection_json[idx] = json.dumps(str(detections))
+    if "segmentation" in batch_outputs:
+        for idx, result in enumerate(batch_outputs["segmentation"]):
+            masks = getattr(result, "segments", [])
+            try:
+                segmentation_json[idx] = json.dumps(masks, default=_json_default)
+            except TypeError:
+                segmentation_json[idx] = json.dumps(str(masks))
 
     table = pa.table(
         {
             "sample_id": pa.array(sample_ids, type=pa.int64()),
             "round": round_col,
             "any_failure": pa.array(any_failure, type=pa.bool_()),
-            "caption_text": pa.array(caption_texts, type=pa.string()),
-            "listing_tags": pa.array(tags_json, type=pa.string()),
+            "cortexia_caption": pa.array(caption_texts, type=pa.string()),
+            "cortexia_tags": pa.array(tags_json, type=pa.string()),
+            "cortexia_detection": pa.array(detection_json, type=pa.string()),
+            "cortexia_segmentation": pa.array(segmentation_json, type=pa.string()),
         }
     )
     record_timing("convert_results_to_table", time.time() - start)
@@ -425,6 +455,123 @@ def process_follow_up_round(
     record_timing("process_follow_up_round.total", time.time() - round_start)
 
 
+def _non_empty_string_mask(table: pa.Table, column: str, empty_tokens: Optional[Sequence[str]] = None) -> Optional[pa.Array]:
+    if column not in table.column_names:
+        return None
+    values = table[column]
+    mask = pc.invert(pc.is_null(values))
+    if empty_tokens:
+        empty_mask = None
+        for token in empty_tokens:
+            token_mask = pc.equal(values, pa.scalar(token, type=values.type))
+            empty_mask = token_mask if empty_mask is None else pc.or_(empty_mask, token_mask)
+        if empty_mask is not None:
+            mask = pc.and_(mask, pc.invert(empty_mask))
+    return mask
+
+
+def collect_updates_for_round(round_name: str) -> Optional[pa.Table]:
+    """Scan Parquet shards for a round and keep rows with non-empty predictions."""
+    round_dir = OUTPUT_ROOT / f"round={round_name}"
+    if not round_dir.exists():
+        return None
+
+    dataset = ds.dataset(round_dir, format="parquet")
+    scanner = dataset.scanner(filter=ds.field("any_failure") == False)  # noqa: E712
+    batches: List[pa.RecordBatch] = []
+
+    for record_batch in scanner.to_batches():
+        table = pa.Table.from_batches([record_batch])
+        caption_mask = _non_empty_string_mask(table, "cortexia_caption", [""])
+        tags_mask = _non_empty_string_mask(table, "cortexia_tags", ["[]", ""])
+        detection_mask = _non_empty_string_mask(table, "cortexia_detection", ["[]", ""])
+        segmentation_mask = _non_empty_string_mask(table, "cortexia_segmentation", ["[]", ""])
+
+        combined_mask: Optional[pa.Array] = None
+        for mask in (caption_mask, tags_mask, detection_mask, segmentation_mask):
+            if mask is None:
+                continue
+            combined_mask = mask if combined_mask is None else pc.or_(combined_mask, mask)
+
+        if combined_mask is None:
+            continue
+        if not pc.any(combined_mask).as_py():
+            continue
+
+        filtered = table.filter(combined_mask)
+        batches.extend(filtered.to_batches())
+
+    if not batches:
+        return None
+
+    return pa.Table.from_batches(batches)
+
+
+def merge_predictions_into_lance(dataset_path: str, round_names: Sequence[str]) -> None:
+    """Merge all updated prediction columns back into the Lance dataset."""
+    start = time.time()
+    update_tables: List[pa.Table] = []
+    for round_name in round_names:
+        round_table = collect_updates_for_round(round_name)
+        if round_table is not None and round_table.num_rows > 0:
+            update_tables.append(round_table)
+
+    if not update_tables:
+        print("No prediction updates detected; skipping Lance merge.")
+        record_timing("merge_predictions_into_lance", time.time() - start)
+        return
+
+    combined_updates = pa.concat_tables(update_tables, promote=True)
+    available_columns = [
+        column
+        for column in [
+            "cortexia_caption",
+            "cortexia_tags",
+            "cortexia_detection",
+            "cortexia_segmentation",
+        ]
+        if column in combined_updates.column_names
+    ]
+
+    if not available_columns:
+        print("Combined updates missing prediction columns; skipping Lance merge.")
+        record_timing("merge_predictions_into_lance", time.time() - start)
+        return
+
+    updates = combined_updates.select(["sample_id", *available_columns])
+
+    lance = _require_lance()
+    dataset = lance.dataset(dataset_path)
+
+    set_expressions = {col: f"source.{col}" for col in available_columns}
+    merge_result: Optional[Any] = None
+    try:
+        merge_result = dataset.merge(
+            source=updates,
+            on="sample_id",
+            when_matched="source.any_failure = false",
+            set=set_expressions,
+        )
+    except AttributeError:
+        # Older Lance versions expose update() instead of merge().
+        dataset.update(
+            updates,
+            on="sample_id",
+            columns=available_columns,
+        )
+        print(
+            "Lance merge() unavailable; used update() fallback for columns:",
+            ", ".join(available_columns),
+        )
+    except Exception as exc:  # pragma: no cover - defensive logging
+        print("Failed to merge predictions into Lance dataset:", exc)
+    else:
+        if merge_result is not None:
+            print("Lance merge() completed:", getattr(merge_result, "summary", merge_result))
+
+    record_timing("merge_predictions_into_lance", time.time() - start)
+
+
 def print_timing_summary() -> None:
     if not TIMING_STATS:
         print("No timing data collected.")
@@ -470,6 +617,8 @@ def main() -> None:
     # Round 2: run detection only on samples that succeeded in round 1.
     round_two = RoundConfig(name="round_2_detection", feature_keys=["detection"])
     process_follow_up_round(DATASET_PATH, round_one.name, round_two, features)
+
+    merge_predictions_into_lance(DATASET_PATH, [round_one.name, round_two.name])
 
     print("Streaming inference complete. Results stored in:", OUTPUT_ROOT)
     print_timing_summary()
