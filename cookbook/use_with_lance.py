@@ -12,6 +12,8 @@ import io
 import json
 import os
 import sys
+import time
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, MutableMapping, Optional, Sequence
@@ -67,6 +69,19 @@ ROW_LIMIT = int(os.environ.get("LANCE_ROW_LIMIT", "0"))
 # ----------------------------------------------------------------------------
 
 
+TimingStats = Dict[str, List[float]]
+TIMING_STATS: TimingStats = defaultdict(list)
+
+
+def record_timing(name: str, elapsed: float, *, batch_id: Optional[int] = None) -> None:
+    """Track and print timing information for a processing stage."""
+    TIMING_STATS[name].append(elapsed)
+    if batch_id is not None:
+        print(f"[TIMING] {name} batch {batch_id} took {elapsed:.3f} s")
+    else:
+        print(f"[TIMING] {name} took {elapsed:.3f} s")
+
+
 def _require_lance() -> Any:
     try:
         import lance
@@ -84,6 +99,7 @@ def stream_lance_batches(dataset_path: str, batch_size: int) -> Iterator[tuple[i
     batch_id = 0
     row_count = 0
     for batch in dataset.to_batches(batch_size=batch_size):
+        step_start = time.time()
         if ROW_LIMIT > 0 and row_count >= ROW_LIMIT:
             break
         # Respect ROW_LIMIT by slicing batch if needed
@@ -99,6 +115,7 @@ def stream_lance_batches(dataset_path: str, batch_size: int) -> Iterator[tuple[i
             columns.append(col)
             fields.append(pa.field(field.name, col.type))
         cast_batch = pa.Table.from_arrays(columns, schema=pa.schema(fields))
+        record_timing("stream_lance_batches", time.time() - step_start, batch_id=batch_id)
         yield batch_id, cast_batch
         batch_id += 1
         row_count += len(cast_batch)
@@ -106,8 +123,11 @@ def stream_lance_batches(dataset_path: str, batch_size: int) -> Iterator[tuple[i
 
 def decode_image_from_bytes(raw: bytes) -> np.ndarray:
     """Decode image bytes to an RGB array."""
+    start = time.time()
     with Image.open(io.BytesIO(raw)) as img:
-        return np.asarray(img.convert("RGB"))
+        frame = np.asarray(img.convert("RGB"))
+    record_timing("decode_image_from_bytes", time.time() - start)
+    return frame
 
 
 def build_video_frame_packet(
@@ -120,6 +140,7 @@ def build_video_frame_packet(
     trajectory_source: Optional[Sequence[Any]] = None,
 ) -> VideoFramePacket:
     """Create a VideoFramePacket from a single-row table."""
+    start = time.time()
     image_value = row[IMAGE_COL][0]
     if hasattr(image_value, "as_py"):
         image_value = image_value.as_py()
@@ -143,7 +164,7 @@ def build_video_frame_packet(
                     TrajectoryPoint(x=x, y=y, z=z, qx=qx, qy=qy, qz=qz, qw=qw)
                 )
 
-    return VideoFramePacket(
+    packet = VideoFramePacket(
         frame_data=frame_np,
         frame_number=int(frame_number),
         timestamp=timestamp,
@@ -152,6 +173,8 @@ def build_video_frame_packet(
         trajectory=trajectory_points,
         current_traj_index=0,
     )
+    record_timing("build_video_frame_packet", time.time() - start)
+    return packet
 
 
 def table_row_to_packet(
@@ -162,6 +185,7 @@ def table_row_to_packet(
     default_video_id: str,
 ) -> VideoFramePacket:
     """Convert a batch row to a VideoFramePacket."""
+    start = time.time()
     row = batch.slice(row_idx, 1)
 
     video_id_val: Optional[str] = default_video_id
@@ -188,7 +212,7 @@ def table_row_to_packet(
         odo_raw = row["odo"][0]
         odo_values = odo_raw.as_py() if hasattr(odo_raw, "as_py") else odo_raw
 
-    return build_video_frame_packet(
+    packet = build_video_frame_packet(
         row,
         global_row_id,
         video_id=video_id_val,
@@ -196,6 +220,8 @@ def table_row_to_packet(
         timestamp=timestamp_val,
         trajectory_source=odo_values,
     )
+    record_timing("table_row_to_packet", time.time() - start)
+    return packet
 
 
 def run_features_on_frames(
@@ -203,6 +229,7 @@ def run_features_on_frames(
     features: MutableMapping[str, Any],
 ) -> Dict[str, Sequence[Any]]:
     """Run features in inference mode without storing computation graphs."""
+    start = time.time()
     outputs: Dict[str, Sequence[Any]] = {}
     # Ensure Torch models stay in eval() but do not rely on eval for memory savings.
     for feature in features.values():
@@ -213,6 +240,7 @@ def run_features_on_frames(
     with torch.inference_mode():
         for name, feature in features.items():
             outputs[name] = feature.process_batch(list(frames))
+    record_timing("run_features_on_frames", time.time() - start)
     return outputs
 
 
@@ -229,6 +257,7 @@ def convert_results_to_table(
     batch_outputs: Dict[str, Sequence[Any]],
 ) -> pa.Table:
     """Convert model outputs to a narrow Arrow table suitable for Parquet writing."""
+    start = time.time()
     any_failure = [False] * len(sample_ids)
     round_col = pa.array([round_name] * len(sample_ids), type=pa.string())
 
@@ -253,24 +282,29 @@ def convert_results_to_table(
             "listing_tags": pa.array(tags_json, type=pa.string()),
         }
     )
+    record_timing("convert_results_to_table", time.time() - start)
     return table
 
 
 def write_batch_to_parquet(round_name: str, shard_id: int, table: pa.Table) -> Path:
     """Write a single batch to a Parquet shard."""
+    start = time.time()
     round_dir = OUTPUT_ROOT / f"round={round_name}"
     round_dir.mkdir(parents=True, exist_ok=True)
     file_path = round_dir / f"shard_{shard_id:06d}.parquet"
     pq.write_table(table, file_path, coerce_timestamps="ms", compression="zstd")
+    record_timing("write_batch_to_parquet", time.time() - start, batch_id=shard_id)
     return file_path
 
 
 def release_batch_memory(*objects: Any) -> None:
     """Explicitly drop references so Python frees memory promptly."""
+    start = time.time()
     for obj in objects:
         del obj
     if torch.cuda.is_available():  # pragma: no cover - depends on runtime
         torch.cuda.empty_cache()
+    record_timing("release_batch_memory", time.time() - start)
 
 
 @dataclass
@@ -281,21 +315,34 @@ class RoundConfig:
 
 def process_round(dataset_path: str, round_cfg: RoundConfig, features: Dict[str, Any]) -> None:
     """Stream the dataset, run selected features, and write shards per batch."""
+    round_start = time.time()
     active_features = {key: features[key] for key in round_cfg.feature_keys}
     default_video_id = "lance_demo"
 
     for shard_id, batch in stream_lance_batches(dataset_path, BATCH_SIZE):
+        batch_start = time.time()
         sample_ids = extract_sample_ids(batch, shard_id * BATCH_SIZE)
+        prep_start = time.time()
         frames = [
             table_row_to_packet(batch, i, sample_ids[i], default_video_id=default_video_id)
             for i in range(len(batch))
         ]
+        record_timing("process_round.build_frames", time.time() - prep_start, batch_id=shard_id)
+        infer_start = time.time()
         outputs = run_features_on_frames(frames, active_features)
+        record_timing("process_round.run_features", time.time() - infer_start, batch_id=shard_id)
+        convert_start = time.time()
         batch_table = convert_results_to_table(sample_ids, round_cfg.name, outputs)
+        record_timing("process_round.convert", time.time() - convert_start, batch_id=shard_id)
+        write_start = time.time()
         write_batch_to_parquet(round_cfg.name, shard_id, batch_table)
+        record_timing("process_round.write", time.time() - write_start, batch_id=shard_id)
 
         # Drop intermediate objects to keep peak memory flat.
         release_batch_memory(batch, frames, outputs, batch_table)
+        record_timing("process_round.batch", time.time() - batch_start, batch_id=shard_id)
+
+    record_timing("process_round.total", time.time() - round_start)
 
 
 def load_successful_sample_ids(round_name: str) -> Iterator[int]:
@@ -331,15 +378,18 @@ def process_follow_up_round(
     features: Dict[str, Any],
 ) -> None:
     """Run a follow-up round only for successful sample_ids from a prior round."""
+    round_start = time.time()
     lance = _require_lance()
     dataset = lance.dataset(dataset_path)
     chunk_size = BATCH_SIZE
     shard = 0
     found_any = False
     for chunk_ids in batched(load_successful_sample_ids(previous_round), chunk_size):
+        batch_start = time.time()
         found_any = True
         batch = dataset.take(chunk_ids)
         # Cast binary columns as earlier to avoid offset issues.
+        cast_start = time.time()
         columns = []
         fields = []
         for field in batch.schema:
@@ -349,22 +399,52 @@ def process_follow_up_round(
             columns.append(col)
             fields.append(pa.field(field.name, col.type))
         batch = pa.Table.from_arrays(columns, schema=pa.schema(fields))
+        record_timing("process_follow_up_round.cast", time.time() - cast_start, batch_id=shard)
 
+        prep_start = time.time()
         frames = [
             table_row_to_packet(batch, i, chunk_ids[i], default_video_id="lance_demo")
             for i in range(len(batch))
         ]
+        record_timing("process_follow_up_round.build_frames", time.time() - prep_start, batch_id=shard)
+        infer_start = time.time()
         outputs = run_features_on_frames(frames, {key: features[key] for key in round_cfg.feature_keys})
+        record_timing("process_follow_up_round.run_features", time.time() - infer_start, batch_id=shard)
+        convert_start = time.time()
         result_table = convert_results_to_table(chunk_ids, round_cfg.name, outputs)
+        record_timing("process_follow_up_round.convert", time.time() - convert_start, batch_id=shard)
+        write_start = time.time()
         write_batch_to_parquet(round_cfg.name, shard, result_table)
+        record_timing("process_follow_up_round.write", time.time() - write_start, batch_id=shard)
         shard += 1
         release_batch_memory(batch, frames, outputs, result_table)
+        record_timing("process_follow_up_round.batch", time.time() - batch_start, batch_id=shard - 1)
 
     if not found_any:
         print(f"No samples pending for round '{round_cfg.name}'.")
+    record_timing("process_follow_up_round.total", time.time() - round_start)
+
+
+def print_timing_summary() -> None:
+    if not TIMING_STATS:
+        print("No timing data collected.")
+        return
+
+    print("\nTiming summary:")
+    for name, values in TIMING_STATS.items():
+        if not values:
+            continue
+        total = sum(values)
+        avg = total / len(values)
+        max_val = max(values)
+        print(
+            f"  {name}: count={len(values)} total={total:.3f}s avg={avg:.3f}s max={max_val:.3f}s"
+        )
 
 
 def main() -> None:
+    global TIMING_STATS
+    TIMING_STATS = defaultdict(list)
     print("Loading Cortexia features...")
     caption = cortexia.create_feature("caption")
     listing = cortexia.create_feature("listing")
@@ -392,6 +472,7 @@ def main() -> None:
     process_follow_up_round(DATASET_PATH, round_one.name, round_two, features)
 
     print("Streaming inference complete. Results stored in:", OUTPUT_ROOT)
+    print_timing_summary()
 
 
 if __name__ == "__main__":
